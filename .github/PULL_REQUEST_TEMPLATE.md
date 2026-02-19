@@ -17,6 +17,10 @@
 - [ ] New tests added for new functionality (if applicable)
 - [ ] Manually tested the changes
 
+## Options
+
+- [ ] Regenerate demo GIF
+
 ## Related Issues
 
 <!-- Link any related issues: Fixes #123, Relates to #456 -->
