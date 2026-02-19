@@ -61,10 +61,27 @@ public sealed class MoveFileTool : IOrcaTool
                         return Task.FromResult(ToolResult.Error(
                             $"Destination directory already exists: {destination}. Set overwrite=true or choose a different name."));
 
-                    Directory.Delete(destination, recursive: true);
+                    // Move destination to temp backup first to prevent data loss if move fails
+                    var backupPath = destination + ".orca-backup-" + Guid.NewGuid().ToString("N")[..8];
+                    Directory.Move(destination, backupPath);
+                    try
+                    {
+                        Directory.Move(source, destination);
+                        Directory.Delete(backupPath, recursive: true);
+                    }
+                    catch
+                    {
+                        // Restore backup on failure
+                        if (Directory.Exists(backupPath) && !Directory.Exists(destination))
+                            Directory.Move(backupPath, destination);
+                        throw;
+                    }
+                }
+                else
+                {
+                    Directory.Move(source, destination);
                 }
 
-                Directory.Move(source, destination);
                 return Task.FromResult(ToolResult.Success($"Moved directory: {source} → {destination}"));
             }
 

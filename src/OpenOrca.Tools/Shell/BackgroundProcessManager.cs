@@ -68,7 +68,7 @@ public static class BackgroundProcessManager
         }
         catch
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
             process.Dispose();
             throw;
         }
@@ -147,7 +147,10 @@ public sealed class ManagedProcess : IDisposable
             if (!_process.HasExited)
                 _process.Kill(entireProcessTree: true);
         }
-        catch { }
+        catch (InvalidOperationException)
+        {
+            // Process already exited between check and kill — safe to ignore
+        }
     }
 
     public void Dispose()

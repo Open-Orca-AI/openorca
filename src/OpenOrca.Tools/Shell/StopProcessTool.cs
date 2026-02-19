@@ -23,19 +23,19 @@ public sealed class StopProcessTool : IOrcaTool
     }
     """).RootElement;
 
-    public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var processId = args.GetProperty("process_id").GetString()!;
 
         var managed = BackgroundProcessManager.Get(processId);
         if (managed is null)
-            return Task.FromResult(ToolResult.Error($"No process found with ID \"{processId}\"."));
+            return ToolResult.Error($"No process found with ID \"{processId}\".");
 
         var wasRunning = !managed.HasExited;
         BackgroundProcessManager.Stop(processId);
 
         // Small delay to allow final output to flush
-        Thread.Sleep(200);
+        await Task.Delay(200, ct);
 
         var lines = managed.GetTailLines(20);
 
@@ -47,6 +47,6 @@ public sealed class StopProcessTool : IOrcaTool
         foreach (var line in lines)
             sb.AppendLine(line);
 
-        return Task.FromResult(ToolResult.Success(sb.ToString()));
+        return ToolResult.Success(sb.ToString());
     }
 }

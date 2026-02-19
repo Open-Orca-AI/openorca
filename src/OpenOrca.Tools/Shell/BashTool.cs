@@ -80,7 +80,7 @@ public sealed class BashTool : IOrcaTool
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
                 return ToolResult.Error($"Command timed out after {timeoutSec} seconds.");
             }
 

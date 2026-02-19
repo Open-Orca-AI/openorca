@@ -113,7 +113,7 @@ public sealed class HookRunner
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Hook timed out (30s): {Command}", command);
-            try { proc.Kill(); } catch { }
+            try { proc.Kill(); } catch (InvalidOperationException) { }
             return -1;
         }
     }
