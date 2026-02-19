@@ -27,34 +27,75 @@ public static class PathSafetyHelper
     /// </summary>
     public static bool IsDangerousPath(string path)
     {
-        path = Path.GetFullPath(path);
-        var normalized = path.Replace('\\', '/').TrimEnd('/');
+        var fullPath = Path.GetFullPath(path);
+
+        // Check the original path first (before symlink resolution)
+        // On macOS, /etc is a symlink to /private/etc — the original must still be flagged
+        if (IsDangerousResolved(fullPath))
+            return true;
+
+        var resolved = ResolveFinalPath(path);
+
+        return resolved != fullPath && IsDangerousResolved(resolved);
+    }
+
+    private static string ResolveFinalPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+
+        // Resolve symlinks and junctions to their final target
+        try
+        {
+            if (Directory.Exists(fullPath))
+            {
+                var target = new DirectoryInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
+                if (target is not null)
+                    return Path.GetFullPath(target.FullName);
+            }
+            else if (File.Exists(fullPath))
+            {
+                var target = new FileInfo(fullPath).ResolveLinkTarget(returnFinalTarget: true);
+                if (target is not null)
+                    return Path.GetFullPath(target.FullName);
+            }
+        }
+        catch
+        {
+            // If symlink resolution fails, fall through to use the unresolved path
+        }
+
+        return fullPath;
+    }
+
+    private static bool IsDangerousResolved(string fullPath)
+    {
+        var normalized = fullPath.Replace('\\', '/').TrimEnd('/');
 
         // Reject explicit dangerous Unix paths
         if (DangerousPaths.Contains(normalized))
             return true;
 
-        // Reject Windows drive roots (C:\, D:\, etc.)
-        if (normalized.Length <= 3 && char.IsLetter(normalized[0]) && normalized is [_, ':', '/'])
-            return true;
-        if (path.Length <= 3 && char.IsLetter(path[0]) && path is [_, ':', '\\'])
+        // Reject drive roots (C:\, D:\, /)
+        var root = Path.GetPathRoot(fullPath);
+        if (!string.IsNullOrEmpty(root) &&
+            string.Equals(fullPath.TrimEnd('\\', '/'), root.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
             return true;
 
         // Reject the user profile directory itself (but not subdirectories)
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!string.IsNullOrEmpty(userProfile) &&
-            string.Equals(Path.GetFullPath(path), Path.GetFullPath(userProfile), StringComparison.OrdinalIgnoreCase))
+            string.Equals(fullPath, Path.GetFullPath(userProfile), StringComparison.OrdinalIgnoreCase))
             return true;
 
         // Reject Windows system directories
         var sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         if (!string.IsNullOrEmpty(sysRoot) &&
-            Path.GetFullPath(path).StartsWith(Path.GetFullPath(sysRoot), StringComparison.OrdinalIgnoreCase))
+            fullPath.StartsWith(Path.GetFullPath(sysRoot), StringComparison.OrdinalIgnoreCase))
             return true;
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         if (!string.IsNullOrEmpty(programFiles) &&
-            string.Equals(Path.GetFullPath(path), Path.GetFullPath(programFiles), StringComparison.OrdinalIgnoreCase))
+            string.Equals(fullPath, Path.GetFullPath(programFiles), StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
