@@ -1,41 +1,17 @@
-name: Demo GIF
+name: Demo GIF (manual)
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, edited]
-  push:
-    branches: [main]
-    paths:
-      - "demo/**"
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
-  ci:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.body, '[x] Regenerate demo GIF'))
-    uses: ./.github/workflows/ci.yml
-
   record-demo:
-    needs: ci
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout PR branch
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-
-      - name: Checkout branch
-        if: github.event_name != 'pull_request'
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -69,13 +45,3 @@ jobs:
           name: demo-gif
           path: demo/demo.gif
           retention-days: 30
-
-      - name: Commit GIF to PR branch
-        if: github.event_name == 'pull_request'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add demo/demo.gif
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: update demo GIF [skip ci]"
-          git push
