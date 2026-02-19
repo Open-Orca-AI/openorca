@@ -72,24 +72,13 @@ public sealed class HookRunner
         string command, string toolName, string argsJson,
         string? result, bool isError, CancellationToken ct)
     {
-        string shell;
-        string shellArgs;
+        var shell = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/bash";
 
-        if (OperatingSystem.IsWindows())
-        {
-            shell = "cmd.exe";
-            shellArgs = $"/c {command}";
-        }
-        else
-        {
-            shell = "/bin/bash";
-            shellArgs = $"-c \"{command.Replace("\"", "\\\"")}\"";
-        }
-
-        var psi = new ProcessStartInfo(shell, shellArgs)
+        var psi = new ProcessStartInfo(shell)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -106,6 +95,12 @@ public sealed class HookRunner
             _logger.LogWarning("Failed to start hook process: {Command}", command);
             return -1;
         }
+
+        // Write command via stdin to avoid shell argument escaping issues
+        if (OperatingSystem.IsWindows())
+            await proc.StandardInput.WriteLineAsync("@echo off");
+        await proc.StandardInput.WriteLineAsync(command);
+        proc.StandardInput.Close();
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));

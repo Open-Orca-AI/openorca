@@ -28,16 +28,22 @@ public static class BackgroundProcessManager
         var psi = new ProcessStartInfo
         {
             FileName = isWindows ? "cmd.exe" : "/bin/bash",
-            Arguments = isWindows ? $"/c {command}" : $"-c \"{command.Replace("\"", "\\\"")}\"",
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start process.");
+
+        // Write command via stdin to avoid shell argument escaping issues
+        if (isWindows)
+            process.StandardInput.WriteLine("@echo off");
+        process.StandardInput.WriteLine(command);
+        process.StandardInput.Close();
 
         try
         {

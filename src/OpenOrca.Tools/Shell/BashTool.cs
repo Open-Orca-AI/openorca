@@ -48,22 +48,26 @@ public sealed class BashTool : IOrcaTool
 
         try
         {
-            // Use bash on Unix, cmd on Windows
             var isWindows = OperatingSystem.IsWindows();
             var psi = new ProcessStartInfo
             {
                 FileName = isWindows ? "cmd.exe" : "/bin/bash",
-                Arguments = isWindows
-                    ? $"/s /c \"{command.Replace("\"", "\\\"")}\""
-                    : $"-c \"{command.Replace("\"", "\\\"")}\"",
                 WorkingDirectory = workDir,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
             using var process = Process.Start(psi)!;
+
+            // Write command via stdin to avoid shell argument escaping issues
+            if (isWindows)
+                await process.StandardInput.WriteLineAsync("@echo off");
+            await process.StandardInput.WriteLineAsync(command);
+            process.StandardInput.Close();
+
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
 

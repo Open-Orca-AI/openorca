@@ -135,24 +135,13 @@ internal sealed class CommandHandler
 
         try
         {
-            string shell;
-            string shellArgs;
+            var shell = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/bash";
 
-            if (OperatingSystem.IsWindows())
-            {
-                shell = "cmd.exe";
-                shellArgs = $"/c {command}";
-            }
-            else
-            {
-                shell = "/bin/bash";
-                shellArgs = $"-c \"{command.Replace("\"", "\\\"")}\"";
-            }
-
-            var psi = new ProcessStartInfo(shell, shellArgs)
+            var psi = new ProcessStartInfo(shell)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = Directory.GetCurrentDirectory()
@@ -170,6 +159,12 @@ internal sealed class CommandHandler
                     using var proc = Process.Start(psi);
                     if (proc is null)
                         throw new InvalidOperationException("Failed to start shell process.");
+
+                    // Write command via stdin to avoid shell argument escaping issues
+                    if (OperatingSystem.IsWindows())
+                        await proc.StandardInput.WriteLineAsync("@echo off");
+                    await proc.StandardInput.WriteLineAsync(command);
+                    proc.StandardInput.Close();
 
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CliConstants.BashShortcutTimeoutSeconds));
                     stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
