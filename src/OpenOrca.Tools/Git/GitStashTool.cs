@@ -43,7 +43,7 @@ public sealed class GitStashTool : IOrcaTool
 
         var gitArgs = action switch
         {
-            "push" when !string.IsNullOrEmpty(message) => $"stash push -m \"{message.Replace("\"", "\\\"")}\"",
+            "push" when !string.IsNullOrEmpty(message) => $"stash push -m {GitHelper.EscapeArg(message)}",
             "push" => "stash push",
             "pop" => $"stash pop stash@{{{index}}}",
             "list" => "stash list",

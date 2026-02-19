@@ -35,9 +35,9 @@ public sealed class GitPullTool : IOrcaTool
         var branch = args.TryGetProperty("branch", out var b) ? b.GetString() : null;
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
-        var gitArgs = $"pull {remote}";
+        var gitArgs = $"pull {GitHelper.EscapeArg(remote)}";
         if (!string.IsNullOrEmpty(branch))
-            gitArgs += $" {branch}";
+            gitArgs += $" {GitHelper.EscapeArg(branch)}";
 
         return await GitHelper.RunGitAsync(gitArgs, path, ct);
     }
