@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>OpenOrca.Cli</RootNamespace>
     <AssemblyName>openorca</AssemblyName>
-    <Version>0.2.5</Version>
+    <Version>0.3.2</Version>
     <Description>OpenOrca - CLI AI Orchestrator for LM Studio</Description>
 
     <!-- Publish as single-file executable -->
