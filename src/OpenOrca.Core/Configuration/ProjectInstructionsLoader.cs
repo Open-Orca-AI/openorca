@@ -15,11 +15,21 @@ public sealed class ProjectInstructionsLoader
         var dir = new DirectoryInfo(startDirectory);
         while (dir is not null)
         {
-            if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                return dir.FullName;
-
-            if (Directory.GetFiles(dir.FullName, "*.sln").Length > 0)
-                return dir.FullName;
+            foreach (var marker in RootMarkers)
+            {
+                if (marker.Contains('*'))
+                {
+                    // Glob pattern — check for matching files (lazy enumeration)
+                    if (Directory.EnumerateFiles(dir.FullName, marker).Any())
+                        return dir.FullName;
+                }
+                else
+                {
+                    // Exact name — check for directory
+                    if (Directory.Exists(Path.Combine(dir.FullName, marker)))
+                        return dir.FullName;
+                }
+            }
 
             dir = dir.Parent;
         }

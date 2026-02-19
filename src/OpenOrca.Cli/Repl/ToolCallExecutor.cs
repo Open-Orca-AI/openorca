@@ -65,6 +65,18 @@ internal sealed class ToolCallExecutor
             _logger.LogDebug("Executing native tool: {Name} (callId: {Id}) args: {Args}",
                 toolName, call.CallId, args.Length > 200 ? args[..200] + "..." : args);
 
+            // Validate input size to prevent memory exhaustion from malicious models
+            const int maxArgsLength = 1_000_000; // 1MB
+            if (args.Length > maxArgsLength)
+            {
+                var errorResult = $"Error: Tool arguments exceed maximum size ({args.Length} chars, limit {maxArgsLength}).";
+                _toolCallRenderer.RenderToolResult(toolName, errorResult, isError: true);
+                var errMsg = new ChatMessage(ChatRole.Tool, "");
+                errMsg.Contents.Add(new FunctionResultContent(call.CallId, errorResult));
+                conversation.AddMessage(errMsg);
+                continue;
+            }
+
             _toolCallRenderer.RenderToolCall(toolName, args);
 
             string result;
