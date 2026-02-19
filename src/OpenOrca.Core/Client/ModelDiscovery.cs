@@ -7,6 +7,8 @@ namespace OpenOrca.Core.Client;
 
 public sealed class ModelDiscovery
 {
+    private static readonly HttpClient SharedHttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+
     private readonly OrcaConfig _config;
     private readonly ILogger<ModelDiscovery> _logger;
 
@@ -24,12 +26,13 @@ public sealed class ModelDiscovery
             ? $"{baseUrl}/models"
             : $"{baseUrl}/v1/models";
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_config.LmStudio.ApiKey}");
-
         try
         {
-            var response = await http.GetFromJsonAsync<JsonElement>(modelsUrl, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Get, modelsUrl);
+            request.Headers.Add("Authorization", $"Bearer {_config.LmStudio.ApiKey}");
+            using var httpResponse = await SharedHttpClient.SendAsync(request, ct);
+            httpResponse.EnsureSuccessStatusCode();
+            var response = await httpResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
 
             if (response.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
             {
