@@ -265,42 +265,50 @@ internal sealed class CommandHandler
         AnsiConsole.MarkupLine($"[grey]CLI AI Orchestrator {versionStr} — Type /help for commands, /exit to quit, Ctrl+O to show thinking[/]");
 
         // ── Connection status ──
-        var baseUrl = _config.LmStudio.BaseUrl;
-        AnsiConsole.Markup($"[grey]Endpoint:[/]  [white]{Markup.Escape(baseUrl)}[/]  ");
-
-        try
+        if (_config.DemoMode)
         {
-            var discovery = new Core.Client.ModelDiscovery(_config,
-                _logger as ILogger<Core.Client.ModelDiscovery>
-                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<Core.Client.ModelDiscovery>.Instance);
-            var models = await discovery.GetAvailableModelsAsync(ct);
+            AnsiConsole.MarkupLine($"[grey]Endpoint:[/]  [green]● Demo mode[/]");
+            AnsiConsole.MarkupLine($"[grey]Model:[/]     [cyan]{Markup.Escape(_config.LmStudio.Model ?? "demo-model")}[/]");
+        }
+        else
+        {
+            var baseUrl = _config.LmStudio.BaseUrl;
+            AnsiConsole.Markup($"[grey]Endpoint:[/]  [white]{Markup.Escape(baseUrl)}[/]  ");
 
-            if (models.Count > 0)
+            try
             {
-                AnsiConsole.MarkupLine("[green]● Connected[/]");
+                var discovery = new Core.Client.ModelDiscovery(_config,
+                    _logger as ILogger<Core.Client.ModelDiscovery>
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<Core.Client.ModelDiscovery>.Instance);
+                var models = await discovery.GetAvailableModelsAsync(ct);
 
-                var activeModel = _config.LmStudio.Model;
-                if (!string.IsNullOrEmpty(activeModel))
+                if (models.Count > 0)
                 {
-                    AnsiConsole.MarkupLine($"[grey]Model:[/]     [cyan]{Markup.Escape(activeModel)}[/]");
-                }
-                else if (models.Count == 1)
-                {
-                    AnsiConsole.MarkupLine($"[grey]Model:[/]     [cyan]{Markup.Escape(models[0])}[/]");
+                    AnsiConsole.MarkupLine("[green]● Connected[/]");
+
+                    var activeModel = _config.LmStudio.Model;
+                    if (!string.IsNullOrEmpty(activeModel))
+                    {
+                        AnsiConsole.MarkupLine($"[grey]Model:[/]     [cyan]{Markup.Escape(activeModel)}[/]");
+                    }
+                    else if (models.Count == 1)
+                    {
+                        AnsiConsole.MarkupLine($"[grey]Model:[/]     [cyan]{Markup.Escape(models[0])}[/]");
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[grey]Models:[/]    [cyan]{models.Count} available[/] — {Markup.Escape(string.Join(", ", models.Take(3)))}{(models.Count > 3 ? ", ..." : "")}");
+                    }
                 }
                 else
                 {
-                    AnsiConsole.MarkupLine($"[grey]Models:[/]    [cyan]{models.Count} available[/] — {Markup.Escape(string.Join(", ", models.Take(3)))}{(models.Count > 3 ? ", ..." : "")}");
+                    AnsiConsole.MarkupLine("[yellow]● No models loaded[/]");
                 }
             }
-            else
+            catch
             {
-                AnsiConsole.MarkupLine("[yellow]● No models loaded[/]");
+                AnsiConsole.MarkupLine("[red]● Unreachable[/]");
             }
-        }
-        catch
-        {
-            AnsiConsole.MarkupLine("[red]● Unreachable[/]");
         }
 
         AnsiConsole.WriteLine();

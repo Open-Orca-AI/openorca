@@ -10,7 +10,7 @@ Set TypingSpeed 50ms
 Set Shell bash
 
 # Launch OpenOrca
-Type "openorca"
+Type "openorca --demo"
 Enter
 Sleep 3s
 
