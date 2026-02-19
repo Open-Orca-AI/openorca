@@ -97,9 +97,19 @@ internal sealed class ConfigEditor
 
             if (choice.StartsWith("Base URL"))
             {
-                lm.BaseUrl = AnsiConsole.Prompt(
+                var newUrl = AnsiConsole.Prompt(
                     new TextPrompt<string>("Base URL:")
                         .DefaultValue(lm.BaseUrl));
+
+                if (!Uri.TryCreate(newUrl, UriKind.Absolute, out var uri) ||
+                    (uri.Scheme != "http" && uri.Scheme != "https"))
+                {
+                    AnsiConsole.MarkupLine("[red]Invalid URL format. Must be http:// or https://[/]");
+                }
+                else
+                {
+                    lm.BaseUrl = newUrl;
+                }
             }
             else if (choice.StartsWith("API Key"))
             {
