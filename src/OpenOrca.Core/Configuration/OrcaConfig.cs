@@ -61,6 +61,12 @@ public sealed class ContextConfig
     public float AutoCompactThreshold { get; set; } = 0.8f;
     public int CompactPreserveLastN { get; set; } = 4;
     public bool AutoCompactEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Average characters per token for estimation. Lower values are more conservative.
+    /// Typical ranges: 3.0-3.5 for code-heavy content, 3.5-4.0 for English prose.
+    /// </summary>
+    public float CharsPerToken { get; set; } = 3.5f;
 }
 
 public sealed class HooksConfig
