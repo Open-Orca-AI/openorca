@@ -143,9 +143,18 @@ public sealed class AgentOrchestrator
                         result = "Tool execution not available.";
                     }
 
-                    var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
-                    toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
-                    context.Conversation.AddMessage(toolResultMessage);
+                    if (_config.LmStudio.NativeToolCalling)
+                    {
+                        var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
+                        toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
+                        context.Conversation.AddMessage(toolResultMessage);
+                    }
+                    else
+                    {
+                        // Text-based models cannot handle FunctionResultContent messages
+                        context.Conversation.AddMessage(
+                            new ChatMessage(ChatRole.User, $"[Tool result for {toolName}]: {result}"));
+                    }
                 }
             }
         }
