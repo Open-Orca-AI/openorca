@@ -2,6 +2,7 @@ namespace OpenOrca.Core.Chat;
 
 public sealed class ConversationManager
 {
+    private readonly object _lock = new();
     private readonly Dictionary<string, Conversation> _conversations = [];
 
     public Conversation Active { get; private set; } = new();
@@ -9,22 +10,34 @@ public sealed class ConversationManager
 
     public Conversation CreateNew(string? systemPrompt = null)
     {
-        Active = new Conversation();
-        ActiveId = Guid.NewGuid().ToString("N")[..8];
+        lock (_lock)
+        {
+            Active = new Conversation();
+            ActiveId = Guid.NewGuid().ToString("N")[..8];
 
-        if (systemPrompt is not null)
-            Active.AddSystemMessage(systemPrompt);
+            if (systemPrompt is not null)
+                Active.AddSystemMessage(systemPrompt);
 
-        _conversations[ActiveId] = Active;
-        return Active;
+            _conversations[ActiveId] = Active;
+            return Active;
+        }
     }
 
     public void SetActive(string id, Conversation conversation)
     {
-        ActiveId = id;
-        Active = conversation;
-        _conversations[id] = conversation;
+        lock (_lock)
+        {
+            ActiveId = id;
+            Active = conversation;
+            _conversations[id] = conversation;
+        }
     }
 
-    public IReadOnlyDictionary<string, Conversation> GetAll() => _conversations;
+    public IReadOnlyDictionary<string, Conversation> GetAll()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<string, Conversation>(_conversations);
+        }
+    }
 }

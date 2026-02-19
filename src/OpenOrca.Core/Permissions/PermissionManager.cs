@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using OpenOrca.Core.Configuration;
 
 namespace OpenOrca.Core.Permissions;
@@ -12,7 +13,7 @@ public enum PermissionDecision
 public sealed class PermissionManager
 {
     private readonly OrcaConfig _config;
-    private readonly HashSet<string> _sessionApprovedTools = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _sessionApprovedTools = new(StringComparer.OrdinalIgnoreCase);
 
     // Callback for interactive approval prompt (set by CLI layer)
     public Func<string, string, Task<PermissionDecision>>? PromptForApproval { get; set; }
@@ -37,7 +38,7 @@ public sealed class PermissionManager
             return true;
 
         // Session-level approval
-        if (_sessionApprovedTools.Contains(toolName))
+        if (_sessionApprovedTools.ContainsKey(toolName))
             return true;
 
         // Risk-based auto-approval
@@ -58,7 +59,7 @@ public sealed class PermissionManager
             case PermissionDecision.Approved:
                 return true;
             case PermissionDecision.ApproveAll:
-                _sessionApprovedTools.Add(toolName);
+                _sessionApprovedTools.TryAdd(toolName, 0);
                 return true;
             case PermissionDecision.Denied:
             default:
