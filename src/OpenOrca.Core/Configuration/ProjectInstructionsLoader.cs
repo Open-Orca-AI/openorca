@@ -9,6 +9,9 @@ public sealed class ProjectInstructionsLoader
     /// </summary>
     public string? FindProjectRoot(string startDirectory)
     {
+        if (string.IsNullOrWhiteSpace(startDirectory) || !Directory.Exists(startDirectory))
+            return null;
+
         var dir = new DirectoryInfo(startDirectory);
         while (dir is not null)
         {
