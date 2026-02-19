@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2CC4B20A-9331-4F6C-8873-B50C12080671}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Core", "src\OpenOrca.Core\OpenOrca.Core.csproj", "{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Tools", "src\OpenOrca.Tools\OpenOrca.Tools.csproj", "{3713D6A1-02C9-4B9C-8F98-76066942D9DF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Cli", "src\OpenOrca.Cli\OpenOrca.Cli.csproj", "{2673EA63-4B39-4FE6-8087-93CB09D9A669}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{18548BF3-18EC-4F38-BC0B-25518BBC3DCA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Core.Tests", "tests\OpenOrca.Core.Tests\OpenOrca.Core.Tests.csproj", "{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Tools.Tests", "tests\OpenOrca.Tools.Tests\OpenOrca.Tools.Tests.csproj", "{EC9517A4-F167-41B0-808A-B0A972A393FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenOrca.Harness", "tests\OpenOrca.Harness\OpenOrca.Harness.csproj", "{4BDE5028-584B-4808-AAC1-79E4F05EF9D2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3713D6A1-02C9-4B9C-8F98-76066942D9DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3713D6A1-02C9-4B9C-8F98-76066942D9DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3713D6A1-02C9-4B9C-8F98-76066942D9DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3713D6A1-02C9-4B9C-8F98-76066942D9DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2673EA63-4B39-4FE6-8087-93CB09D9A669}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2673EA63-4B39-4FE6-8087-93CB09D9A669}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2673EA63-4B39-4FE6-8087-93CB09D9A669}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2673EA63-4B39-4FE6-8087-93CB09D9A669}.Release|Any CPU.Build.0 = Release|Any CPU
+		{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EC9517A4-F167-41B0-808A-B0A972A393FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC9517A4-F167-41B0-808A-B0A972A393FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC9517A4-F167-41B0-808A-B0A972A393FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC9517A4-F167-41B0-808A-B0A972A393FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4BDE5028-584B-4808-AAC1-79E4F05EF9D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4BDE5028-584B-4808-AAC1-79E4F05EF9D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4BDE5028-584B-4808-AAC1-79E4F05EF9D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4BDE5028-584B-4808-AAC1-79E4F05EF9D2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E1906BFD-A79C-48EA-A5B5-0BCBE3904A69} = {2CC4B20A-9331-4F6C-8873-B50C12080671}
+		{3713D6A1-02C9-4B9C-8F98-76066942D9DF} = {2CC4B20A-9331-4F6C-8873-B50C12080671}
+		{2673EA63-4B39-4FE6-8087-93CB09D9A669} = {2CC4B20A-9331-4F6C-8873-B50C12080671}
+		{09EDA035-20EF-4C3B-AD3D-E7232C6DAC22} = {18548BF3-18EC-4F38-BC0B-25518BBC3DCA}
+		{EC9517A4-F167-41B0-808A-B0A972A393FD} = {18548BF3-18EC-4F38-BC0B-25518BBC3DCA}
+		{4BDE5028-584B-4808-AAC1-79E4F05EF9D2} = {18548BF3-18EC-4F38-BC0B-25518BBC3DCA}
+	EndGlobalSection
+EndGlobal
