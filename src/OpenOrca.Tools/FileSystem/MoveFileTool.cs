@@ -55,9 +55,14 @@ public sealed class MoveFileTool : IOrcaTool
 
             if (Directory.Exists(source))
             {
-                if (Directory.Exists(destination) && !overwrite)
-                    return Task.FromResult(ToolResult.Error(
-                        $"Destination directory already exists: {destination}. Set overwrite=true or choose a different name."));
+                if (Directory.Exists(destination))
+                {
+                    if (!overwrite)
+                        return Task.FromResult(ToolResult.Error(
+                            $"Destination directory already exists: {destination}. Set overwrite=true or choose a different name."));
+
+                    Directory.Delete(destination, recursive: true);
+                }
 
                 Directory.Move(source, destination);
                 return Task.FromResult(ToolResult.Success($"Moved directory: {source} → {destination}"));
