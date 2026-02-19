@@ -104,19 +104,9 @@ public sealed class EditFileTool : IOrcaTool
         var pos = content.IndexOf(newString, StringComparison.Ordinal);
         if (pos < 0) return "";
 
-        var lines = content.Split('\n');
-        var charCount = 0;
-        var targetLine = 0;
-
-        for (var i = 0; i < lines.Length; i++)
-        {
-            charCount += lines[i].Length + 1; // +1 for \n
-            if (charCount > pos)
-            {
-                targetLine = i;
-                break;
-            }
-        }
+        var lines = content.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        // Count newlines before pos to find the target line
+        var targetLine = content[..pos].Split('\n').Length - 1;
 
         var start = Math.Max(0, targetLine - 5);
         var end = Math.Min(lines.Length - 1, targetLine + 5);
