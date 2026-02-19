@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   record-demo:
     runs-on: ubuntu-latest
@@ -22,13 +25,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install VHS and ffmpeg
+      - name: Install VHS, ttyd, and ffmpeg
         run: |
           sudo mkdir -p /etc/apt/keyrings
           curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
           echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
           sudo apt-get update
           sudo apt-get install -y vhs ffmpeg
+          VHS_TTYD_VERSION=$(curl -s https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep tag_name | cut -d'"' -f4)
+          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${VHS_TTYD_VERSION}/ttyd.x86_64" -o /tmp/ttyd
+          chmod +x /tmp/ttyd
+          sudo mv /tmp/ttyd /usr/local/bin/ttyd
 
       - name: Publish OpenOrca
         run: |
