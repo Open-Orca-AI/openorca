@@ -1,6 +1,6 @@
 # OpenOrca
 
-[![CI](https://github.com/openorca-ai/openorca/actions/workflows/ci.yml/badge.svg)](https://github.com/openorca-ai/openorca/actions/workflows/ci.yml)
+[![CI](https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml/badge.svg)](https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 
