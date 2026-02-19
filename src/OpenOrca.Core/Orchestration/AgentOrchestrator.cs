@@ -26,6 +26,8 @@ public sealed class AgentOrchestrator
 
     public async Task<AgentContext> SpawnAgentAsync(string task, CancellationToken ct)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(task);
+
         var context = new AgentContext
         {
             Task = task,
@@ -61,6 +63,8 @@ public sealed class AgentOrchestrator
     public async Task<List<AgentContext>> SpawnParallelAsync(
         IEnumerable<string> tasks, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(tasks);
+
         var agentTasks = tasks.Select(task => SpawnAgentAsync(task, ct));
         var results = await Task.WhenAll(agentTasks);
         return results.ToList();
