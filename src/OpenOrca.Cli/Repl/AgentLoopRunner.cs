@@ -129,6 +129,7 @@ internal sealed class AgentLoopRunner
             var firstToken = true;
             var thinkingVisible = _state.ShowThinking;
             var consoleRedirected = false;
+            var textParts = new List<string>();
 
             var realStderr = Console.Error;
             void RedirectConsole()
@@ -150,6 +151,40 @@ internal sealed class AgentLoopRunner
                 }
             }
 
+            void CheckThinkingToggle()
+            {
+                while (!Console.IsInputRedirected && Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
+                    {
+                        _state.ShowThinking = !_state.ShowThinking;
+                        thinkingVisible = _state.ShowThinking;
+                        if (!firstToken)
+                        {
+                            if (thinkingVisible)
+                            {
+                                thinking.Stop();
+                                RestoreConsole();
+                                Console.Write("\x1b[36m");
+                                Console.Write(string.Join("", textParts));
+                            }
+                            else
+                            {
+                                _streamingRenderer.Finish();
+                                Console.Write("\x1b[0m\r\x1b[K");
+                                RedirectConsole();
+                            }
+                        }
+                        else
+                        {
+                            if (thinkingVisible) RestoreConsole();
+                            else RedirectConsole();
+                        }
+                    }
+                }
+            }
+
             if (!thinkingVisible)
                 RedirectConsole();
 
@@ -157,7 +192,7 @@ internal sealed class AgentLoopRunner
             {
                 _logger.LogDebug("Starting streaming request to LLM...");
 
-                var textParts = new List<string>();
+                textParts.Clear();
                 var allContents = new List<AIContent>();
                 var tokenCount = 0;
 
@@ -167,41 +202,7 @@ internal sealed class AgentLoopRunner
                 {
                     updateCount++;
 
-                    // Check for Ctrl+O toggle during streaming
-                    while (!Console.IsInputRedirected && Console.KeyAvailable)
-                    {
-                        var key = Console.ReadKey(intercept: true);
-                        if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
-                        {
-                            _state.ShowThinking = !_state.ShowThinking;
-                            thinkingVisible = _state.ShowThinking;
-
-                            if (!firstToken)
-                            {
-                                if (thinkingVisible)
-                                {
-                                    thinking.Stop();
-                                    RestoreConsole();
-                                    Console.Write("\x1b[36m");
-                                    var buffered = string.Join("", textParts);
-                                    Console.Write(buffered);
-                                }
-                                else
-                                {
-                                    _streamingRenderer.Finish();
-                                    Console.Write("\x1b[0m\r\x1b[K");
-                                    RedirectConsole();
-                                }
-                            }
-                            else
-                            {
-                                if (thinkingVisible)
-                                    RestoreConsole();
-                                else
-                                    RedirectConsole();
-                            }
-                        }
-                    }
+                    CheckThinkingToggle();
 
                     foreach (var content in update.Contents)
                     {
@@ -265,21 +266,7 @@ internal sealed class AgentLoopRunner
                     {
                         updateCount++;
 
-                        while (!Console.IsInputRedirected && Console.KeyAvailable)
-                        {
-                            var key = Console.ReadKey(intercept: true);
-                            if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
-                            {
-                                _state.ShowThinking = !_state.ShowThinking;
-                                thinkingVisible = _state.ShowThinking;
-                                if (!firstToken)
-                                {
-                                    if (thinkingVisible) { thinking.Stop(); RestoreConsole(); Console.Write("\x1b[36m"); Console.Write(string.Join("", textParts)); }
-                                    else { _streamingRenderer.Finish(); Console.Write("\x1b[0m\r\x1b[K"); RedirectConsole(); }
-                                }
-                                else { if (thinkingVisible) RestoreConsole(); else RedirectConsole(); }
-                            }
-                        }
+                        CheckThinkingToggle();
 
                         foreach (var content in update.Contents)
                         {
