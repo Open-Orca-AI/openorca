@@ -36,6 +36,7 @@ Create or overwrite a file.
 |-----------|------|----------|-------------|
 | `path` | string | Yes | File path to write |
 | `content` | string | Yes | File content |
+| `append` | boolean | No | Append to the file instead of overwriting. Defaults to false |
 
 ### `edit_file`
 **Risk:** Moderate
@@ -47,6 +48,7 @@ Replace an exact string in a file. The `old_string` must match exactly (includin
 | `path` | string | Yes | File path |
 | `old_string` | string | Yes | Text to find |
 | `new_string` | string | Yes | Replacement text |
+| `create_if_missing` | boolean | No | When true and the file doesn't exist, create it with `new_string` as content (`old_string` must be empty). Defaults to false |
 
 ### `delete_file`
 **Risk:** Moderate
@@ -104,6 +106,7 @@ Find files matching a glob pattern.
 |-----------|------|----------|-------------|
 | `pattern` | string | Yes | Glob pattern (e.g., `**/*.cs`) |
 | `path` | string | No | Base directory (defaults to cwd) |
+| `exclude` | string | No | Glob pattern to exclude from results (e.g., `**/node_modules/**`) |
 
 ### `grep`
 **Risk:** ReadOnly
@@ -114,7 +117,11 @@ Search file contents using regex.
 |-----------|------|----------|-------------|
 | `pattern` | string | Yes | Regex pattern |
 | `path` | string | No | File or directory to search |
-| `include` | string | No | Glob filter for files |
+| `glob` | string | No | Glob filter for files (e.g., `*.cs`, `**/*.json`) |
+| `context` | integer | No | Number of context lines before and after each match. Defaults to 0 |
+| `case_insensitive` | boolean | No | Search case-insensitively. Defaults to false |
+| `output_mode` | string | No | Output format: `content` (matching lines, default), `files_only` (file paths only), `count` (match counts per file) |
+| `max_results` | integer | No | Maximum matches to return. Defaults to 500 |
 
 ### `list_directory`
 **Risk:** ReadOnly
@@ -124,6 +131,7 @@ List directory contents.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | No | Directory path (defaults to cwd) |
+| `recursive` | boolean | No | List entries recursively (capped at 1000 entries). Defaults to false |
 
 ---
 
@@ -137,7 +145,9 @@ Execute a shell command. Commands run via `cmd.exe` on Windows or `/bin/bash` on
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `command` | string | Yes | Shell command to execute |
-| `timeout` | integer | No | Timeout in seconds (default: 120) |
+| `working_directory` | string | No | Directory to run the command in (defaults to cwd) |
+| `timeout_seconds` | integer | No | Timeout in seconds (default: 120) |
+| `description` | string | No | Human-readable description of what the command does |
 
 ### `start_background_process`
 **Risk:** Dangerous
