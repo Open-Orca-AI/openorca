@@ -27,9 +27,16 @@ public static class PathSafetyHelper
     /// </summary>
     public static bool IsDangerousPath(string path)
     {
+        var fullPath = Path.GetFullPath(path);
+
+        // Check the original path first (before symlink resolution)
+        // On macOS, /etc is a symlink to /private/etc — the original must still be flagged
+        if (IsDangerousResolved(fullPath))
+            return true;
+
         var resolved = ResolveFinalPath(path);
 
-        return IsDangerousResolved(resolved);
+        return resolved != fullPath && IsDangerousResolved(resolved);
     }
 
     private static string ResolveFinalPath(string path)

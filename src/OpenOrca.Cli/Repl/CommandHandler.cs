@@ -158,17 +158,25 @@ internal sealed class CommandHandler
                 WorkingDirectory = Directory.GetCurrentDirectory()
             };
 
-            using var proc = Process.Start(psi);
-            if (proc is null)
-            {
-                AnsiConsole.MarkupLine("[red]Failed to start shell process.[/]");
-                return;
-            }
+            string stdout = "";
+            string stderr = "";
+            int exitCode = -1;
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            var stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
-            var stderr = await proc.StandardError.ReadToEndAsync(cts.Token);
-            await proc.WaitForExitAsync(cts.Token);
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("yellow"))
+                .StartAsync($"Running: {command}", async _ =>
+                {
+                    using var proc = Process.Start(psi);
+                    if (proc is null)
+                        throw new InvalidOperationException("Failed to start shell process.");
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                    stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
+                    stderr = await proc.StandardError.ReadToEndAsync(cts.Token);
+                    await proc.WaitForExitAsync(cts.Token);
+                    exitCode = proc.ExitCode;
+                });
 
             // Truncate for display
             if (stdout.Length > 5000)
@@ -197,12 +205,16 @@ internal sealed class CommandHandler
                 AnsiConsole.MarkupLine($"[grey]$ {Markup.Escape(command)} (no output)[/]");
             }
 
-            var exitColor = proc.ExitCode == 0 ? "green" : "red";
-            AnsiConsole.MarkupLine($"[{exitColor}]Exit code: {proc.ExitCode}[/]");
+            var exitColor = exitCode == 0 ? "green" : "red";
+            AnsiConsole.MarkupLine($"[{exitColor}]Exit code: {exitCode}[/]");
         }
         catch (OperationCanceledException)
         {
             AnsiConsole.MarkupLine("[yellow]Command timed out (120s).[/]");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("shell process"))
+        {
+            AnsiConsole.MarkupLine("[red]Failed to start shell process.[/]");
         }
         catch (Exception ex)
         {
@@ -305,7 +317,7 @@ internal sealed class CommandHandler
                     AnsiConsole.MarkupLine("[yellow]● No models loaded[/]");
                 }
             }
-            catch
+            catch (Exception)
             {
                 AnsiConsole.MarkupLine("[red]● Unreachable[/]");
             }
@@ -325,7 +337,7 @@ internal sealed class CommandHandler
             return;
         }
 
-        var tokensBefore = conversation.EstimateTokenCount();
+        var tokensBefore = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
         var msgCountBefore = conversation.Messages.Count;
 
         // Build summarization prompt
@@ -343,38 +355,44 @@ internal sealed class CommandHandler
                     $"[{msg.Role.Value}]: {(text.Length > 2000 ? text[..2000] + "..." : text)}"));
         }
 
-        AnsiConsole.Markup("[yellow]Compacting conversation...[/]");
-
         try
         {
-            var options = new ChatOptions
-            {
-                Temperature = 0.3f,
-                MaxOutputTokens = 500,
-            };
-            if (_config.LmStudio.Model is not null)
-                options.ModelId = _config.LmStudio.Model;
+            string summary = "";
 
-            var response = await _chatClient.GetResponseAsync(summaryMessages, options, ct);
-            var summary = string.Join("", response.Messages
-                .SelectMany(m => m.Contents.OfType<TextContent>())
-                .Select(t => t.Text));
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("yellow"))
+                .StartAsync("Compacting conversation...", async _ =>
+                {
+                    var options = new ChatOptions
+                    {
+                        Temperature = 0.3f,
+                        MaxOutputTokens = 500,
+                    };
+                    if (_config.LmStudio.Model is not null)
+                        options.ModelId = _config.LmStudio.Model;
+
+                    var response = await _chatClient.GetResponseAsync(summaryMessages, options, ct);
+                    summary = string.Join("", response.Messages
+                        .SelectMany(m => m.Contents.OfType<TextContent>())
+                        .Select(t => t.Text));
+                });
 
             if (string.IsNullOrWhiteSpace(summary))
             {
-                AnsiConsole.MarkupLine("\n[red]Failed to generate summary — empty response.[/]");
+                AnsiConsole.MarkupLine("[red]Failed to generate summary — empty response.[/]");
                 return;
             }
 
             var removed = conversation.CompactWithSummary(summary, preserveLastN);
-            var tokensAfter = conversation.EstimateTokenCount();
+            var tokensAfter = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
 
-            AnsiConsole.MarkupLine($"\n[green]Compacted: {msgCountBefore} messages -> {conversation.Messages.Count} messages (~{tokensBefore} -> ~{tokensAfter} tokens)[/]");
+            AnsiConsole.MarkupLine($"[green]Compacted: {msgCountBefore} messages -> {conversation.Messages.Count} messages (~{tokensBefore} -> ~{tokensAfter} tokens)[/]");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to compact conversation");
-            AnsiConsole.MarkupLine($"\n[red]Failed to compact: {Markup.Escape(ex.Message)}[/]");
+            AnsiConsole.MarkupLine($"[red]Failed to compact: {Markup.Escape(ex.Message)}[/]");
         }
     }
 
@@ -414,8 +432,15 @@ internal sealed class CommandHandler
 
             case "save":
                 var title = args.Length > 1 ? string.Join(" ", args[1..]) : null;
-                var id = await _sessionManager.SaveAsync(conversation, title, _state.CurrentSessionId);
-                _state.CurrentSessionId = id;
+                string? id = null;
+                await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .SpinnerStyle(Style.Parse("yellow"))
+                    .StartAsync("Saving session...", async _ =>
+                    {
+                        id = await _sessionManager.SaveAsync(conversation, title, _state.CurrentSessionId);
+                    });
+                _state.CurrentSessionId = id!;
                 AnsiConsole.MarkupLine($"[green]Session saved: {id}[/]");
                 break;
 
@@ -425,7 +450,14 @@ internal sealed class CommandHandler
                     AnsiConsole.MarkupLine("[yellow]Usage: /session load <id>[/]");
                     return;
                 }
-                var sessionData = await _sessionManager.LoadAsync(args[1]);
+                SessionData? sessionData = null;
+                await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .SpinnerStyle(Style.Parse("yellow"))
+                    .StartAsync("Loading session...", async _ =>
+                    {
+                        sessionData = await _sessionManager.LoadAsync(args[1]);
+                    });
                 if (sessionData is null)
                 {
                     AnsiConsole.MarkupLine($"[red]Session not found: {Markup.Escape(args[1])}[/]");
@@ -506,7 +538,7 @@ internal sealed class CommandHandler
 
     private void ShowContext(Conversation conversation)
     {
-        var estimatedTokens = conversation.EstimateTokenCount();
+        var estimatedTokens = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
         var contextWindow = _config.Context.ContextWindowSize;
         var usagePercent = contextWindow > 0 ? (float)estimatedTokens / contextWindow * 100 : 0;
         var counts = conversation.GetMessageCountByRole();
@@ -562,7 +594,7 @@ internal sealed class CommandHandler
         table.AddRow("Total turns", _state.TotalTurns.ToString());
         table.AddRow("Output tokens", $"{_state.TotalOutputTokens:N0}");
         table.AddRow("Messages in context", conversation.Messages.Count.ToString());
-        table.AddRow("Context tokens", $"~{conversation.EstimateTokenCount():N0}");
+        table.AddRow("Context tokens", $"~{conversation.EstimateTokenCount(_config.Context.CharsPerToken):N0}");
 
         if (_state.TotalTurns > 0)
             table.AddRow("Avg tokens/turn", $"{_state.TotalOutputTokens / _state.TotalTurns:N0}");
@@ -613,8 +645,13 @@ internal sealed class CommandHandler
                     {
                         UseShellExecute = true
                     };
-                    var proc = Process.Start(psi);
-                    proc?.WaitForExit();
+                    using var proc = Process.Start(psi);
+                    if (proc is null)
+                    {
+                        AnsiConsole.MarkupLine("[red]Failed to launch editor.[/]");
+                        break;
+                    }
+                    proc.WaitForExit();
                     AnsiConsole.MarkupLine("[green]ORCA.md updated.[/]");
                 }
                 catch (Exception ex)
@@ -650,7 +687,7 @@ internal sealed class CommandHandler
             else
                 table.AddRow("LM Studio connection", "[yellow]Connected but no models loaded[/]");
         }
-        catch
+        catch (Exception)
         {
             table.AddRow("LM Studio connection", "[red]Unreachable[/]");
         }
@@ -678,7 +715,11 @@ internal sealed class CommandHandler
             Directory.CreateDirectory(logDir);
             table.AddRow("Log directory", "[green]Writable[/]");
         }
-        catch
+        catch (IOException)
+        {
+            table.AddRow("Log directory", "[red]Not writable[/]");
+        }
+        catch (UnauthorizedAccessException)
         {
             table.AddRow("Log directory", "[red]Not writable[/]");
         }
@@ -689,7 +730,7 @@ internal sealed class CommandHandler
             var sessions = _sessionManager.List();
             table.AddRow("Session storage", $"[green]Accessible ({sessions.Count} sessions)[/]");
         }
-        catch
+        catch (Exception)
         {
             table.AddRow("Session storage", "[red]Not accessible[/]");
         }

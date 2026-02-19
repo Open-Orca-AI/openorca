@@ -16,6 +16,7 @@ namespace OpenOrca.Cli.Repl;
 internal sealed class AgentLoopRunner
 {
     internal const int MaxIterations = 25;
+    private static readonly HttpClient SharedProbeClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private readonly IChatClient _chatClient;
     private readonly OrcaConfig _config;
@@ -72,7 +73,7 @@ internal sealed class AgentLoopRunner
         // Auto-compact check
         if (_config.Context.AutoCompactEnabled)
         {
-            var estimatedTokens = conversation.EstimateTokenCount();
+            var estimatedTokens = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
             var threshold = (int)(_config.Context.ContextWindowSize * _config.Context.AutoCompactThreshold);
             if (estimatedTokens > threshold)
             {
@@ -129,6 +130,7 @@ internal sealed class AgentLoopRunner
             var firstToken = true;
             var thinkingVisible = _state.ShowThinking;
             var consoleRedirected = false;
+            var textParts = new List<string>();
 
             var realStderr = Console.Error;
             void RedirectConsole()
@@ -150,6 +152,40 @@ internal sealed class AgentLoopRunner
                 }
             }
 
+            void CheckThinkingToggle()
+            {
+                while (!Console.IsInputRedirected && Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
+                    {
+                        _state.ShowThinking = !_state.ShowThinking;
+                        thinkingVisible = _state.ShowThinking;
+                        if (!firstToken)
+                        {
+                            if (thinkingVisible)
+                            {
+                                thinking.Stop();
+                                RestoreConsole();
+                                Console.Write("\x1b[36m");
+                                Console.Write(string.Join("", textParts));
+                            }
+                            else
+                            {
+                                _streamingRenderer.Finish();
+                                Console.Write("\x1b[0m\r\x1b[K");
+                                RedirectConsole();
+                            }
+                        }
+                        else
+                        {
+                            if (thinkingVisible) RestoreConsole();
+                            else RedirectConsole();
+                        }
+                    }
+                }
+            }
+
             if (!thinkingVisible)
                 RedirectConsole();
 
@@ -157,7 +193,7 @@ internal sealed class AgentLoopRunner
             {
                 _logger.LogDebug("Starting streaming request to LLM...");
 
-                var textParts = new List<string>();
+                textParts.Clear();
                 var allContents = new List<AIContent>();
                 var tokenCount = 0;
 
@@ -167,41 +203,7 @@ internal sealed class AgentLoopRunner
                 {
                     updateCount++;
 
-                    // Check for Ctrl+O toggle during streaming
-                    while (!Console.IsInputRedirected && Console.KeyAvailable)
-                    {
-                        var key = Console.ReadKey(intercept: true);
-                        if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
-                        {
-                            _state.ShowThinking = !_state.ShowThinking;
-                            thinkingVisible = _state.ShowThinking;
-
-                            if (!firstToken)
-                            {
-                                if (thinkingVisible)
-                                {
-                                    thinking.Stop();
-                                    RestoreConsole();
-                                    Console.Write("\x1b[36m");
-                                    var buffered = string.Join("", textParts);
-                                    Console.Write(buffered);
-                                }
-                                else
-                                {
-                                    _streamingRenderer.Finish();
-                                    Console.Write("\x1b[0m\r\x1b[K");
-                                    RedirectConsole();
-                                }
-                            }
-                            else
-                            {
-                                if (thinkingVisible)
-                                    RestoreConsole();
-                                else
-                                    RedirectConsole();
-                            }
-                        }
-                    }
+                    CheckThinkingToggle();
 
                     foreach (var content in update.Contents)
                     {
@@ -265,21 +267,7 @@ internal sealed class AgentLoopRunner
                     {
                         updateCount++;
 
-                        while (!Console.IsInputRedirected && Console.KeyAvailable)
-                        {
-                            var key = Console.ReadKey(intercept: true);
-                            if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
-                            {
-                                _state.ShowThinking = !_state.ShowThinking;
-                                thinkingVisible = _state.ShowThinking;
-                                if (!firstToken)
-                                {
-                                    if (thinkingVisible) { thinking.Stop(); RestoreConsole(); Console.Write("\x1b[36m"); Console.Write(string.Join("", textParts)); }
-                                    else { _streamingRenderer.Finish(); Console.Write("\x1b[0m\r\x1b[K"); RedirectConsole(); }
-                                }
-                                else { if (thinkingVisible) RestoreConsole(); else RedirectConsole(); }
-                            }
-                        }
+                        CheckThinkingToggle();
 
                         foreach (var content in update.Contents)
                         {
@@ -584,9 +572,6 @@ internal sealed class AgentLoopRunner
         {
             _logger.LogDebug("Probing server with raw HTTP request for error details...");
 
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_config.LmStudio.ApiKey}");
-
             var msgArray = messages.Select(m => new
             {
                 role = m.Role.Value,
@@ -604,8 +589,11 @@ internal sealed class AgentLoopRunner
 
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-            var response = await httpClient.PostAsync(
-                $"{_config.LmStudio.BaseUrl.TrimEnd('/')}/chat/completions", content, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post,
+                $"{_config.LmStudio.BaseUrl.TrimEnd('/')}/chat/completions");
+            request.Headers.Add("Authorization", $"Bearer {_config.LmStudio.ApiKey}");
+            request.Content = content;
+            var response = await SharedProbeClient.SendAsync(request, ct);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -624,7 +612,7 @@ internal sealed class AgentLoopRunner
                                 : body;
                     }
                 }
-                catch { /* not JSON, use raw body */ }
+                catch (JsonException) { /* not JSON, use raw body */ }
 
                 return body;
             }
