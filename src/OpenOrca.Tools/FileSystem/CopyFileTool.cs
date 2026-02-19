@@ -75,18 +75,28 @@ public sealed class CopyFileTool : IOrcaTool
 
     private static void CopyDirectory(string source, string destination, bool overwrite)
     {
+        var destRoot = Path.GetFullPath(destination);
+        CopyDirectoryCore(source, destination, overwrite, destRoot);
+    }
+
+    private static void CopyDirectoryCore(string source, string destination, bool overwrite, string destRoot)
+    {
         Directory.CreateDirectory(destination);
 
         foreach (var file in Directory.GetFiles(source))
         {
-            var destFile = Path.Combine(destination, Path.GetFileName(file));
+            var destFile = Path.GetFullPath(Path.Combine(destination, Path.GetFileName(file)));
+            if (!destFile.StartsWith(destRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Path traversal detected: {destFile} escapes destination root.");
             File.Copy(file, destFile, overwrite);
         }
 
         foreach (var dir in Directory.GetDirectories(source))
         {
-            var destSubDir = Path.Combine(destination, Path.GetFileName(dir));
-            CopyDirectory(dir, destSubDir, overwrite);
+            var destSubDir = Path.GetFullPath(Path.Combine(destination, Path.GetFileName(dir)));
+            if (!destSubDir.StartsWith(destRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Path traversal detected: {destSubDir} escapes destination root.");
+            CopyDirectoryCore(dir, destSubDir, overwrite, destRoot);
         }
     }
 }
