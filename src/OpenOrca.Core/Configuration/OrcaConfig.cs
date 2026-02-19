@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace OpenOrca.Core.Configuration;
 
 public sealed class OrcaConfig
@@ -7,6 +9,12 @@ public sealed class OrcaConfig
     public SessionConfig Session { get; set; } = new();
     public ContextConfig Context { get; set; } = new();
     public HooksConfig Hooks { get; set; } = new();
+
+    /// <summary>
+    /// Runtime-only flag set by --demo CLI argument. Never serialized to config.json.
+    /// </summary>
+    [JsonIgnore]
+    public bool DemoMode { get; set; }
 }
 
 public sealed class LmStudioConfig

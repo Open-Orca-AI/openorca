@@ -38,6 +38,18 @@ var configManager = new ConfigManager();
 await configManager.LoadAsync();
 var config = configManager.Config;
 
+// Parse --demo flag
+var demoMode = Array.Exists(args, a => a == "--demo");
+if (demoMode)
+{
+    config.DemoMode = true;
+    config.LmStudio.NativeToolCalling = false;
+    config.LmStudio.Model = "demo-model";
+    config.Permissions.AutoApproveAll = true;
+    config.Session.AutoSave = false;
+    config.Context.AutoCompactEnabled = false;
+}
+
 // Register config
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(configManager);
@@ -61,12 +73,19 @@ builder.Services.AddSingleton<CommandParser>();
 builder.Services.AddSingleton<StreamingRenderer>();
 builder.Services.AddSingleton<ToolCallRenderer>();
 
-// Register IChatClient via factory
-builder.Services.AddSingleton<IChatClient>(sp =>
+// Register IChatClient — use embedded demo client or real LM Studio factory
+if (demoMode)
 {
-    var factory = sp.GetRequiredService<LmStudioClientFactory>();
-    return factory.Create();
-});
+    builder.Services.AddSingleton<IChatClient>(new DemoChatClient());
+}
+else
+{
+    builder.Services.AddSingleton<IChatClient>(sp =>
+    {
+        var factory = sp.GetRequiredService<LmStudioClientFactory>();
+        return factory.Create();
+    });
+}
 
 // Register tool registry
 builder.Services.AddSingleton<ToolRegistry>();

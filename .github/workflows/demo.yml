@@ -38,11 +38,6 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Install VHS, ttyd, and ffmpeg
         run: |
           sudo mkdir -p /etc/apt/keyrings
@@ -60,42 +55,6 @@ jobs:
           dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
           chmod +x publish/openorca
           echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
-
-      - name: Create demo config
-        run: |
-          mkdir -p ~/.openorca
-          cat > ~/.openorca/config.json << 'EOCONFIG'
-          {
-            "lmStudio": {
-              "baseUrl": "http://localhost:1234/v1",
-              "model": "demo-model-7b",
-              "nativeToolCalling": false,
-              "timeoutSeconds": 30
-            },
-            "permissions": {
-              "autoApproveAll": true
-            },
-            "session": {
-              "autoSave": false
-            },
-            "context": {
-              "contextWindowSize": 8192,
-              "autoCompactEnabled": false
-            }
-          }
-          EOCONFIG
-
-      - name: Start mock server
-        run: |
-          python demo/mock-server.py &
-          echo "Waiting for mock server..."
-          for i in $(seq 1 30); do
-            if curl -s http://localhost:1234/v1/models > /dev/null 2>&1; then
-              echo "Mock server ready."
-              break
-            fi
-            sleep 1
-          done
 
       - name: Record demo GIF
         run: vhs demo/demo.tape
