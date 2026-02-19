@@ -47,6 +47,8 @@ public sealed class WebFetchTool : IOrcaTool
 
         try
         {
+            await DomainRateLimiter.ThrottleAsync(url, ct);
+
             var response = await HttpHelper.Client.GetAsync(uri, ct);
 
             if (!response.IsSuccessStatusCode)

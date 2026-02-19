@@ -17,13 +17,13 @@ public class ToolRegistryTests
     }
 
     [Fact]
-    public void DiscoverTools_FindsExpected32Tools()
+    public void DiscoverTools_FindsExpected34Tools()
     {
         var registry = new ToolRegistry(NullLogger<ToolRegistry>.Instance);
         registry.DiscoverTools(typeof(ToolRegistry).Assembly);
 
         var tools = registry.GetAll();
-        Assert.Equal(32, tools.Count);
+        Assert.Equal(34, tools.Count);
     }
 
     [Fact]
@@ -60,7 +60,8 @@ public class ToolRegistryTests
             "git_push", "git_pull", "git_stash",
             "web_fetch", "web_search",
             "think", "task_list",
-            "github"
+            "github",
+            "network_diagnostics", "archive"
         };
 
         foreach (var name in newTools)
