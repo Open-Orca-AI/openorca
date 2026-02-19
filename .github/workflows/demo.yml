@@ -2,60 +2,86 @@ name: Demo GIF
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, edited]
-  push:
-    branches: [main]
-    paths:
-      - "demo/**"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
   pull-requests: read
-  actions: read
 
 jobs:
-  record-demo:
+  # Decide whether the demo should actually be recorded.
+  # For push-to-main: always record after CI passes.
+  # For PRs: only record if the "[x] Regenerate demo GIF" checkbox is checked.
+  gate:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.body, '[x] Regenerate demo GIF'))
-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      should-record: ${{ steps.check.outputs.should-record }}
+      is-pr: ${{ steps.check.outputs.is-pr }}
+      pr-head-ref: ${{ steps.check.outputs.pr-head-ref }}
+      pr-head-repo: ${{ steps.check.outputs.pr-head-repo }}
     steps:
-      - name: Wait for CI
-        if: github.event_name != 'workflow_dispatch'
+      - name: Determine if demo should be recorded
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            SHA="${{ github.event.pull_request.head.sha }}"
-          else
-            SHA="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should-record=true" >> "$GITHUB_OUTPUT"
+            echo "is-pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "Waiting for CI workflow on $SHA..."
-          for i in $(seq 1 30); do
-            RUN_ID=$(gh run list --workflow=ci.yml --commit="$SHA" --json databaseId --jq '.[0].databaseId')
-            if [ -n "$RUN_ID" ]; then
-              echo "Found CI run: $RUN_ID — watching..."
-              gh run watch "$RUN_ID" --exit-status
-              exit $?
-            fi
-            echo "CI run not found yet... (attempt $i/30)"
-            sleep 10
-          done
-          echo "Timed out waiting for CI run."
-          exit 1
 
+          EVENT="${{ github.event.workflow_run.event }}"
+
+          if [ "$EVENT" = "push" ]; then
+            echo "CI passed on main — recording demo."
+            echo "should-record=true" >> "$GITHUB_OUTPUT"
+            echo "is-pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$EVENT" = "pull_request" ]; then
+            PR_NUM=$(echo '${{ toJson(github.event.workflow_run.pull_requests) }}' | jq '.[0].number // empty')
+            if [ -z "$PR_NUM" ]; then
+              echo "No associated PR found, skipping."
+              echo "should-record=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            PR_DATA=$(gh pr view "$PR_NUM" --repo "${{ github.repository }}" --json body,headRefName,headRepository)
+            HAS_CHECKBOX=$(echo "$PR_DATA" | jq -r 'if (.body | contains("[x] Regenerate demo GIF")) then "true" else "false" end')
+            HEAD_REF=$(echo "$PR_DATA" | jq -r '.headRefName')
+            HEAD_REPO=$(echo "$PR_DATA" | jq -r '.headRepository.owner.login + "/" + .headRepository.name')
+            echo "PR #$PR_NUM checkbox=$HAS_CHECKBOX ref=$HEAD_REF repo=$HEAD_REPO"
+            echo "should-record=$HAS_CHECKBOX" >> "$GITHUB_OUTPUT"
+            echo "is-pr=true" >> "$GITHUB_OUTPUT"
+            echo "pr-head-ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+            echo "pr-head-repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Unhandled CI trigger event: $EVENT, skipping."
+          echo "should-record=false" >> "$GITHUB_OUTPUT"
+
+  record-demo:
+    needs: gate
+    if: needs.gate.outputs.should-record == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Checkout PR branch
-        if: github.event_name == 'pull_request'
+        if: needs.gate.outputs.is-pr == 'true'
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ needs.gate.outputs.pr-head-ref }}
+          repository: ${{ needs.gate.outputs.pr-head-repo }}
 
       - name: Checkout branch
-        if: github.event_name != 'pull_request'
+        if: needs.gate.outputs.is-pr != 'true'
         uses: actions/checkout@v4
 
       - name: Setup .NET
@@ -92,7 +118,7 @@ jobs:
           retention-days: 30
 
       - name: Commit GIF to PR branch
-        if: github.event_name == 'pull_request'
+        if: needs.gate.outputs.is-pr == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
