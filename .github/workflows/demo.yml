@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: read
 
 jobs:
   record-demo:
@@ -22,6 +23,30 @@ jobs:
       (github.event_name == 'pull_request' && contains(github.event.pull_request.body, '[x] Regenerate demo GIF'))
 
     steps:
+      - name: Wait for CI
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            SHA="${{ github.sha }}"
+          fi
+          echo "Waiting for CI workflow on $SHA..."
+          for i in $(seq 1 30); do
+            RUN_ID=$(gh run list --workflow=ci.yml --commit="$SHA" --json databaseId --jq '.[0].databaseId')
+            if [ -n "$RUN_ID" ]; then
+              echo "Found CI run: $RUN_ID — watching..."
+              gh run watch "$RUN_ID" --exit-status
+              exit $?
+            fi
+            echo "CI run not found yet... (attempt $i/30)"
+            sleep 10
+          done
+          echo "Timed out waiting for CI run."
+          exit 1
+
       - name: Checkout PR branch
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
