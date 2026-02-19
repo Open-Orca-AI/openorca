@@ -8,6 +8,9 @@ namespace OpenOrca.Core.Client;
 public sealed class ModelDiscovery
 {
     private static readonly HttpClient SharedHttpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static List<string>? _cachedModels;
+    private static DateTime _cacheExpiry = DateTime.MinValue;
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly OrcaConfig _config;
     private readonly ILogger<ModelDiscovery> _logger;
@@ -20,6 +23,9 @@ public sealed class ModelDiscovery
 
     public async Task<List<string>> GetAvailableModelsAsync(CancellationToken ct = default)
     {
+        if (_cachedModels is not null && DateTime.UtcNow < _cacheExpiry)
+            return _cachedModels;
+
         var baseUrl = _config.LmStudio.BaseUrl.TrimEnd('/');
         // Go up from /v1 to get the models endpoint
         var modelsUrl = baseUrl.EndsWith("/v1")
@@ -43,6 +49,8 @@ public sealed class ModelDiscovery
                         models.Add(id.GetString()!);
                 }
                 _logger.LogInformation("Found {Count} models at {Url}", models.Count, modelsUrl);
+                _cachedModels = models;
+                _cacheExpiry = DateTime.UtcNow + CacheTtl;
                 return models;
             }
         }

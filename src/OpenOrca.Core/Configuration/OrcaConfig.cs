@@ -8,6 +8,7 @@ public sealed class OrcaConfig
     public PermissionsConfig Permissions { get; set; } = new();
     public SessionConfig Session { get; set; } = new();
     public ContextConfig Context { get; set; } = new();
+    public AgentConfig Agent { get; set; } = new();
     public HooksConfig Hooks { get; set; } = new();
 
     /// <summary>
@@ -67,6 +68,12 @@ public sealed class ContextConfig
     /// Typical ranges: 3.0-3.5 for code-heavy content, 3.5-4.0 for English prose.
     /// </summary>
     public float CharsPerToken { get; set; } = 3.5f;
+}
+
+public sealed class AgentConfig
+{
+    public int MaxIterations { get; set; } = 15;
+    public int TimeoutSeconds { get; set; } = 300;
 }
 
 public sealed class HooksConfig

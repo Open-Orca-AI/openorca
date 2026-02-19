@@ -19,7 +19,7 @@ public sealed class ToolCallRenderer
     public void RenderToolResult(string toolName, string result, bool isError = false)
     {
         var color = isError ? "red" : "green";
-        var maxLen = 2000;
+        var maxLen = CliConstants.ToolResultDisplayMaxChars;
         var display = result.Length > maxLen
             ? result[..maxLen] + $"\n... ({result.Length - maxLen} chars truncated)"
             : result;
