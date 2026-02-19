@@ -7,6 +7,19 @@ public static class BackgroundProcessManager
 {
     private static readonly ConcurrentDictionary<string, ManagedProcess> _processes = new();
 
+    static BackgroundProcessManager()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => KillAll();
+    }
+
+    public static void KillAll()
+    {
+        foreach (var mp in _processes.Values)
+        {
+            mp.Kill();
+        }
+    }
+
     public static ManagedProcess Start(string command, string workingDirectory)
     {
         var id = Guid.NewGuid().ToString("N")[..4];
@@ -26,24 +39,33 @@ public static class BackgroundProcessManager
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start process.");
 
-        var managed = new ManagedProcess(id, command, workingDirectory, process);
-
-        process.OutputDataReceived += (_, e) =>
+        try
         {
-            if (e.Data is not null)
-                managed.AppendLine(e.Data);
-        };
-        process.ErrorDataReceived += (_, e) =>
+            var managed = new ManagedProcess(id, command, workingDirectory, process);
+
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                    managed.AppendLine(e.Data);
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                    managed.AppendLine($"[stderr] {e.Data}");
+            };
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            _processes[id] = managed;
+            return managed;
+        }
+        catch
         {
-            if (e.Data is not null)
-                managed.AppendLine($"[stderr] {e.Data}");
-        };
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        _processes[id] = managed;
-        return managed;
+            try { process.Kill(entireProcessTree: true); } catch { }
+            process.Dispose();
+            throw;
+        }
     }
 
     public static ManagedProcess? Get(string id)
@@ -64,7 +86,7 @@ public static class BackgroundProcessManager
     }
 }
 
-public sealed class ManagedProcess
+public sealed class ManagedProcess : IDisposable
 {
     private const int MaxLines = 1000;
     private readonly List<string> _outputLines = new();
@@ -120,5 +142,11 @@ public sealed class ManagedProcess
                 _process.Kill(entireProcessTree: true);
         }
         catch { }
+    }
+
+    public void Dispose()
+    {
+        Kill();
+        _process.Dispose();
     }
 }
