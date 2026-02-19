@@ -16,7 +16,7 @@ public static partial class ConsoleHelper
         {
             return Console.WindowWidth;
         }
-        catch
+        catch (IOException)
         {
             return 120;
         }

@@ -114,7 +114,7 @@ public sealed class ThinkingIndicator : IDisposable
         _stopwatch.Stop();
         _cts.Cancel();
 
-        try { _animationTask.Wait(500); } catch { }
+        try { _animationTask.Wait(500); } catch (AggregateException) { }
 
         // Clear the thinking line
         _output.Write("\r\x1b[K");

@@ -241,7 +241,7 @@ internal sealed class ToolCallExecutor
                     return true;
                 }
             }
-            catch { /* schema inspection failed, skip */ }
+            catch (Exception) { /* schema inspection failed, skip */ }
         }
 
         return false;

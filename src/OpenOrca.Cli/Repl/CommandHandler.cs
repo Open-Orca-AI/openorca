@@ -305,7 +305,7 @@ internal sealed class CommandHandler
                     AnsiConsole.MarkupLine("[yellow]● No models loaded[/]");
                 }
             }
-            catch
+            catch (Exception)
             {
                 AnsiConsole.MarkupLine("[red]● Unreachable[/]");
             }
@@ -655,7 +655,7 @@ internal sealed class CommandHandler
             else
                 table.AddRow("LM Studio connection", "[yellow]Connected but no models loaded[/]");
         }
-        catch
+        catch (Exception)
         {
             table.AddRow("LM Studio connection", "[red]Unreachable[/]");
         }
@@ -683,7 +683,11 @@ internal sealed class CommandHandler
             Directory.CreateDirectory(logDir);
             table.AddRow("Log directory", "[green]Writable[/]");
         }
-        catch
+        catch (IOException)
+        {
+            table.AddRow("Log directory", "[red]Not writable[/]");
+        }
+        catch (UnauthorizedAccessException)
         {
             table.AddRow("Log directory", "[red]Not writable[/]");
         }
@@ -694,7 +698,7 @@ internal sealed class CommandHandler
             var sessions = _sessionManager.List();
             table.AddRow("Session storage", $"[green]Accessible ({sessions.Count} sessions)[/]");
         }
-        catch
+        catch (Exception)
         {
             table.AddRow("Session storage", "[red]Not accessible[/]");
         }

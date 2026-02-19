@@ -375,7 +375,7 @@ internal sealed class ConfigEditor
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<Core.Client.ModelDiscovery>.Instance);
             return await discovery.GetAvailableModelsAsync();
         }
-        catch
+        catch (Exception)
         {
             return [];
         }

@@ -119,9 +119,13 @@ public sealed class GrepTool : IOrcaTool
                 if (fileHits > 0)
                     fileMatchCounts[relativePath] = fileHits;
             }
-            catch
+            catch (IOException)
             {
-                // Skip files that can't be read (binary, permissions, etc.)
+                // Skip files that can't be read (binary, locked, etc.)
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Skip files with insufficient permissions
             }
         }
 
