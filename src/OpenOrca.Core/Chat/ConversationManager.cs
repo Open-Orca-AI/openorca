@@ -5,30 +5,35 @@ public sealed class ConversationManager
     private readonly object _lock = new();
     private readonly Dictionary<string, Conversation> _conversations = [];
 
-    public Conversation Active { get; private set; } = new();
-    public string ActiveId { get; private set; } = Guid.NewGuid().ToString("N")[..8];
+    private volatile Conversation _active = new();
+    private volatile string _activeId = Guid.NewGuid().ToString("N")[..8];
+
+    public Conversation Active => _active;
+    public string ActiveId => _activeId;
 
     public Conversation CreateNew(string? systemPrompt = null)
     {
         lock (_lock)
         {
-            Active = new Conversation();
-            ActiveId = Guid.NewGuid().ToString("N")[..8];
+            _active = new Conversation();
+            _activeId = Guid.NewGuid().ToString("N")[..8];
 
             if (systemPrompt is not null)
-                Active.AddSystemMessage(systemPrompt);
+                _active.AddSystemMessage(systemPrompt);
 
-            _conversations[ActiveId] = Active;
-            return Active;
+            _conversations[_activeId] = _active;
+            return _active;
         }
     }
 
     public void SetActive(string id, Conversation conversation)
     {
+        ArgumentNullException.ThrowIfNull(conversation);
+
         lock (_lock)
         {
-            ActiveId = id;
-            Active = conversation;
+            _activeId = id;
+            _active = conversation;
             _conversations[id] = conversation;
         }
     }

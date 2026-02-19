@@ -896,6 +896,10 @@ internal sealed class CommandHandler
                 lines.Add("");
             }
 
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
             File.WriteAllText(path, string.Join("\n", lines));
             AnsiConsole.MarkupLine($"[green]Exported conversation to {Markup.Escape(path)} ({conversation.Messages.Count} messages)[/]");
         }
@@ -934,6 +938,7 @@ internal sealed class CommandHandler
 
         AnsiConsole.MarkupLine($"[grey]  Ctrl+O  Toggle thinking output (currently {(_state.ShowThinking ? "[green]visible[/]" : "[yellow]hidden[/]")})[/]");
         AnsiConsole.MarkupLine($"[grey]  Plan    {(_state.PlanMode ? "[cyan]active[/]" : "[grey]off[/]")} — use /plan to toggle[/]");
+        AnsiConsole.MarkupLine("[grey]  Tip: End a line with \\ to continue input on the next line[/]");
     }
 
     private static void ShowWelcomeBannerMinimal()
