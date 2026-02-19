@@ -28,6 +28,12 @@ public sealed class LmStudioConfig
     public int TimeoutSeconds { get; set; } = 120;
 
     /// <summary>
+    /// Maximum idle time (seconds) during streaming before aborting.
+    /// If no tokens are received for this duration, the stream is cancelled.
+    /// </summary>
+    public int StreamingTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
     /// Send tool definitions via the OpenAI function calling protocol.
     /// Default is on. Turn off if your model returns empty responses when tools are sent.
     /// Tools are also described in the system prompt as a fallback for text-based tool calling.

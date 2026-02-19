@@ -197,10 +197,22 @@ internal sealed class AgentLoopRunner
                 var allContents = new List<AIContent>();
                 var tokenCount = 0;
 
+                var streamingTimeout = TimeSpan.FromSeconds(
+                    _config.LmStudio.StreamingTimeoutSeconds > 0
+                        ? _config.LmStudio.StreamingTimeoutSeconds
+                        : CliConstants.StreamingIdleTimeoutSeconds);
+
                 var updateCount = 0;
-                await foreach (var update in _chatClient.GetStreamingResponseAsync(
-                    messages, options, genToken))
+                using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
+                idleCts.CancelAfter(streamingTimeout);
+
+                try
                 {
+                await foreach (var update in _chatClient.GetStreamingResponseAsync(
+                    messages, options, idleCts.Token))
+                {
+                    // Reset idle timer on each update
+                    idleCts.CancelAfter(streamingTimeout);
                     updateCount++;
 
                     CheckThinkingToggle();
@@ -241,6 +253,16 @@ internal sealed class AgentLoopRunner
                         allContents.Add(content);
                     }
                 }
+                }
+                catch (OperationCanceledException) when (idleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
+                {
+                    thinking.Stop();
+                    RestoreConsole();
+                    _logger.LogWarning("Streaming idle timeout after {Seconds}s — no tokens received", streamingTimeout.TotalSeconds);
+                    AnsiConsole.MarkupLine($"\n[red]Streaming timeout: no tokens received for {streamingTimeout.TotalSeconds:0}s[/]");
+                    ShowLogHint();
+                    break;
+                }
 
                 // Always restore console before any post-stream output
                 RestoreConsole();
@@ -262,9 +284,15 @@ internal sealed class AgentLoopRunner
                     firstToken = true;
                     updateCount = 0;
 
-                    await foreach (var update in _chatClient.GetStreamingResponseAsync(
-                        messages, retryOptions, genToken))
+                    using var retryIdleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
+                    retryIdleCts.CancelAfter(streamingTimeout);
+
+                    try
                     {
+                    await foreach (var update in _chatClient.GetStreamingResponseAsync(
+                        messages, retryOptions, retryIdleCts.Token))
+                    {
+                        retryIdleCts.CancelAfter(streamingTimeout);
                         updateCount++;
 
                         CheckThinkingToggle();
@@ -287,6 +315,16 @@ internal sealed class AgentLoopRunner
                             }
                             allContents.Add(content);
                         }
+                    }
+                    }
+                    catch (OperationCanceledException) when (retryIdleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
+                    {
+                        thinking.Stop();
+                        RestoreConsole();
+                        _logger.LogWarning("Retry streaming idle timeout after {Seconds}s", streamingTimeout.TotalSeconds);
+                        AnsiConsole.MarkupLine($"\n[red]Streaming timeout: no tokens received for {streamingTimeout.TotalSeconds:0}s[/]");
+                        ShowLogHint();
+                        break;
                     }
 
                     RestoreConsole();

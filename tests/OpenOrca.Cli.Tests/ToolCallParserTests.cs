@@ -397,4 +397,75 @@ public class ToolCallParserTests
         var result = ToolCallParser.ParseArguments(json.RootElement);
         Assert.Null(result["key"]);
     }
+
+    // ── Bare JSON regex false positive tests (#98) ──
+
+    [Fact]
+    public void Parse_BareJsonWithNestedArguments_ExtractsToolCall()
+    {
+        var text = """{"name": "bash", "arguments": {"command": "echo", "opts": {"verbose": true}}}""";
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Single(results);
+        Assert.Equal("bash", results[0].Name);
+    }
+
+    [Fact]
+    public void Parse_BareJsonWithExtraFieldsBeforeArguments_Skipped()
+    {
+        // Extra fields between name and arguments — should still not match random JSON
+        var text = """Just a plain JSON config: {"host": "localhost", "port": 8080}""";
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Parse_RandomJsonWithNameField_NotFalsePositive()
+    {
+        // JSON with "name" field but no "arguments" — should not match
+        var text = """{"name": "John", "age": 30, "city": "NYC"}""";
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Parse_BareJsonRequiresNameFirst()
+    {
+        // "arguments" before "name" — the improved regex requires name before arguments
+        var text = """{"arguments": {"path": "test.txt"}, "name": "read_file"}""";
+        var results = _parser.ParseToolCallsFromText(text);
+
+        // This should NOT match the bare JSON regex (name must come first),
+        // but it wouldn't be found by any other pattern either
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Parse_BareJsonWithWhitespace_ExtractsToolCall()
+    {
+        var text = """
+            {
+                "name": "read_file",
+                "arguments": {
+                    "path": "/tmp/test.txt"
+                }
+            }
+            """;
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Single(results);
+        Assert.Equal("read_file", results[0].Name);
+    }
+
+    [Fact]
+    public void Parse_WrappedToolCallFormat_ExtractsToolCall()
+    {
+        var text = """{"tool_call": {"name": "bash", "arguments": {"command": "ls"}}}""";
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Single(results);
+        Assert.Equal("bash", results[0].Name);
+    }
 }
