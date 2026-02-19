@@ -49,10 +49,10 @@ public sealed class GitLogTool : IOrcaTool
         var gitArgs = $"log {format} -n {count}";
 
         if (!string.IsNullOrEmpty(author))
-            gitArgs += $" --author=\"{author}\"";
+            gitArgs += $" --author={GitHelper.EscapeArg(author)}";
 
         if (!string.IsNullOrEmpty(file))
-            gitArgs += $" -- {file}";
+            gitArgs += $" -- {GitHelper.EscapeArg(file)}";
 
         return await GitHelper.RunGitAsync(gitArgs, path, ct);
     }

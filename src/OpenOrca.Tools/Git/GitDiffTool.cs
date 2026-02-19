@@ -43,7 +43,7 @@ public sealed class GitDiffTool : IOrcaTool
         string gitArgs;
         if (!string.IsNullOrEmpty(baseBranch))
         {
-            gitArgs = $"diff {baseBranch}...HEAD";
+            gitArgs = $"diff {GitHelper.EscapeArg(baseBranch + "...HEAD")}";
         }
         else
         {
@@ -51,7 +51,7 @@ public sealed class GitDiffTool : IOrcaTool
             if (staged) gitArgs += " --cached";
         }
 
-        if (!string.IsNullOrEmpty(file)) gitArgs += $" -- {file}";
+        if (!string.IsNullOrEmpty(file)) gitArgs += $" -- {GitHelper.EscapeArg(file)}";
 
         return await GitHelper.RunGitAsync(gitArgs, path, ct);
     }

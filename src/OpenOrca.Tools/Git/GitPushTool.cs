@@ -40,9 +40,9 @@ public sealed class GitPushTool : IOrcaTool
         var force = args.TryGetProperty("force", out var f) && f.GetBoolean();
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
-        var gitArgs = $"push {remote}";
+        var gitArgs = $"push {GitHelper.EscapeArg(remote)}";
         if (!string.IsNullOrEmpty(branch))
-            gitArgs += $" {branch}";
+            gitArgs += $" {GitHelper.EscapeArg(branch)}";
         if (force)
             gitArgs += " --force-with-lease";
 

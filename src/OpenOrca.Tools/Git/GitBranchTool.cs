@@ -39,9 +39,9 @@ public sealed class GitBranchTool : IOrcaTool
         return action switch
         {
             "create" when !string.IsNullOrEmpty(name) =>
-                await GitHelper.RunGitAsync($"branch {name}", path, ct),
+                await GitHelper.RunGitAsync($"branch {GitHelper.EscapeArg(name)}", path, ct),
             "delete" when !string.IsNullOrEmpty(name) =>
-                await GitHelper.RunGitAsync($"branch -d {name}", path, ct),
+                await GitHelper.RunGitAsync($"branch -d {GitHelper.EscapeArg(name)}", path, ct),
             "list" =>
                 await GitHelper.RunGitAsync("branch -a", path, ct),
             _ =>

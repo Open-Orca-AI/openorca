@@ -49,7 +49,7 @@ public sealed class GitCommitTool : IOrcaTool
 
         // Stage files
         var stageArgs = files.Count > 0
-            ? $"add {string.Join(" ", files.Select(f => $"\"{f}\""))}"
+            ? $"add {string.Join(" ", files.Select(GitHelper.EscapeArg))}"
             : "add -A";
 
         var stageResult = await GitHelper.RunGitAsync(stageArgs, path, ct);
@@ -57,8 +57,7 @@ public sealed class GitCommitTool : IOrcaTool
             return ToolResult.Error($"Failed to stage: {stageResult.Content}");
 
         // Commit
-        var escapedMessage = message.Replace("\"", "\\\"");
-        var commitResult = await GitHelper.RunGitAsync($"commit -m \"{escapedMessage}\"", path, ct);
+        var commitResult = await GitHelper.RunGitAsync($"commit -m {GitHelper.EscapeArg(message)}", path, ct);
         if (commitResult.IsError)
             return commitResult;
 

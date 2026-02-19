@@ -37,6 +37,6 @@ public sealed class GitCheckoutTool : IOrcaTool
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
         var flag = create ? "-b " : "";
-        return await GitHelper.RunGitAsync($"checkout {flag}{target}", path, ct);
+        return await GitHelper.RunGitAsync($"checkout {flag}{GitHelper.EscapeArg(target)}", path, ct);
     }
 }

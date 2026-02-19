@@ -31,6 +31,16 @@ public sealed class GitStatusTool : IOrcaTool
 
 internal static class GitHelper
 {
+    /// <summary>
+    /// Escapes a value for safe interpolation into a git argument string.
+    /// Wraps in double quotes with backslash-escaped inner quotes and backslashes.
+    /// </summary>
+    public static string EscapeArg(string value)
+    {
+        var escaped = value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return $"\"{escaped}\"";
+    }
+
     public static async Task<ToolResult> RunGitAsync(string arguments, string workingDirectory, CancellationToken ct)
     {
         workingDirectory = Path.GetFullPath(workingDirectory);
