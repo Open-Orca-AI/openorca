@@ -9,10 +9,11 @@ OpenOrca.sln
 ├── src/
 │   ├── OpenOrca.Cli          # Console app, REPL, streaming UI
 │   ├── OpenOrca.Core         # Domain logic (chat, config, sessions, permissions, hooks)
-│   └── OpenOrca.Tools        # 31 tool implementations
+│   └── OpenOrca.Tools        # 34 tool implementations
 └── tests/
-    ├── OpenOrca.Core.Tests   # 49 unit tests
-    ├── OpenOrca.Tools.Tests  # 65 unit tests
+    ├── OpenOrca.Cli.Tests    # CLI layer unit tests
+    ├── OpenOrca.Core.Tests   # Core domain unit tests
+    ├── OpenOrca.Tools.Tests  # Tool unit tests
     └── OpenOrca.Harness      # Integration tests (requires LM Studio)
 ```
 
@@ -103,6 +104,52 @@ When `nativeToolCalling` is `true`:
 3. If native tool calls have missing required arguments → switch to text-based mode
 4. Once downgraded, stays in text-based mode for the rest of that agent loop
 
+### Streaming Error Probe (`ProbeForServerErrorAsync`)
+
+LM Studio returns some streaming errors as SSE `event: error` with HTTP 200 status. The Microsoft.Extensions.AI SDK silently drops these, producing a stream that completes with 0 tokens and 0 updates.
+
+When AgentLoopRunner detects this (no tokens received after streaming completes), it calls `ProbeForServerErrorAsync()` which makes a raw HTTP POST to `/chat/completions` with `stream: false`. This non-streaming request surfaces the actual error from the server (context overflow, model crash, etc.) and displays it to the user. Without this probe, the user would only see "LLM returned an empty response" with no actionable information.
+
+### Streaming Idle Timeout
+
+Each streaming loop (both primary and retry) is wrapped with a resettable idle timeout via `CancellationTokenSource.CancelAfter()`. The timeout resets on every token/update received, so it only fires when the stream goes idle.
+
+- Default: 120 seconds (configurable via `LmStudioConfig.StreamingTimeoutSeconds`)
+- Fallback constant: `CliConstants.StreamingIdleTimeoutSeconds`
+- Uses a linked CTS so generation cancellation (Ctrl+C) still works
+- On timeout: displays a warning with the timeout duration and a log path hint
+
+### Text-Based Tool Call Parsing
+
+`ToolCallParser.ParseToolCallsFromText()` extracts tool calls from LLM text output using 6 pattern categories, tried in order:
+
+| # | Pattern | Regex / Description |
+|---|---------|-------------------|
+| 1 | `<tool_call>` tags | `<tool_call>{...}</tool_call>` |
+| 2 | `<\|tool_call\|>` tags | `<\|tool_call\|>{...}<\|/tool_call\|>` |
+| 3 | `[TOOL_CALL]` tags | `[TOOL_CALL]{...}[/TOOL_CALL]` |
+| 4 | `<function_call>` tags | `<function_call>{...}</function_call>` |
+| 4b | JSON in code fences | `` ```json\n{...}\n``` `` |
+| 5 | Bare JSON | `{"name": "...", "arguments": {...}}` (requires `"name"` before `"arguments"`, supports one level of nested braces) |
+
+Before pattern matching, the parser strips `<think>...</think>` blocks and `<assistant>` tags. It tries the stripped text first, falling back to the full text only if no matches are found. Pattern 5 (bare JSON) only runs if patterns 1–4b yield no results, preventing false positives on conversational JSON.
+
+The parser also handles `{"function": {"name": "...", "arguments": {...}}}` wrapper format and `{"tool_call": {...}}` wrapper format.
+
+### Nudge Mechanism
+
+When the model outputs text that *looks like* an action (code blocks + action words + file paths, or code blocks with tool-like JSON) but doesn't use `<tool_call>` tags, the agent loop sends a nudge message (`PromptConstants.NudgeMessage`) asking the model to re-emit using the proper format. This gives the model a second chance without wasting context.
+
+Nudge triggers:
+1. **Tool-like JSON in code blocks** — a `` ```json `` block containing `{"name":` is detected
+2. **Action pattern** — a code block + action words (create, write, save, update, etc.) + a file path pattern
+
+Nudge is limited to 1 attempt per agent loop. Additionally, truncated `<tool_call>` tags (open tag without close) trigger up to 2 continuation attempts with a separate recovery message.
+
+### 25-Turn Agent Loop Limit
+
+The agent loop runs a maximum of `CliConstants.AgentMaxIterations` (25) iterations per user message. This prevents runaway loops when the model keeps calling tools indefinitely. The loop also detects retry patterns — if a tool fails 4 times identically, the loop breaks. At 3 identical failures, a redirect message is injected asking the model to try a different approach.
+
 ## OpenOrca.Core
 
 Domain logic with no UI concerns. Can be referenced independently.
@@ -126,7 +173,7 @@ Domain logic with no UI concerns. Can be referenced independently.
 
 ## OpenOrca.Tools
 
-All 31 tool implementations, organized by category.
+All 34 tool implementations, organized by category.
 
 ### Directory Structure
 
@@ -134,19 +181,21 @@ All 31 tool implementations, organized by category.
 OpenOrca.Tools/
 ├── Abstractions/
 │   ├── IOrcaTool.cs          # Tool interface
-│   ├── OrcaToolAttribute.cs  # [OrcaTool("name")] attribute
-│   ├── ToolRegistry.cs       # Auto-discovery via reflection
 │   ├── ToolResult.cs         # Result type (content + isError)
 │   └── ToolRiskLevel.cs      # ReadOnly, Moderate, Dangerous
+├── Registry/
+│   └── ToolRegistry.cs       # Auto-discovery via reflection + ILogger injection
 ├── FileSystem/               # read_file, write_file, edit_file, delete_file,
 │                             # copy_file, move_file, mkdir, cd, glob, grep, list_directory
 ├── Shell/                    # bash, start_background_process, get_process_output, stop_process
 ├── Git/                      # git_status, git_diff, git_log, git_commit, git_branch,
 │                             # git_checkout, git_push, git_pull, git_stash
 ├── GitHub/                   # github (gh CLI wrapper)
-├── Web/                      # web_fetch, web_search
+├── Web/                      # web_fetch, web_search (with per-domain rate limiting)
+├── Network/                  # network_diagnostics (ping, dns_lookup, check_connection)
+├── Archive/                  # archive (create, extract, list zip archives)
 ├── Interactive/              # ask_user
-├── Utility/                  # think, task_list
+├── Utility/                  # think, task_list, env
 └── Agent/                    # spawn_agent
 ```
 
@@ -167,7 +216,17 @@ public interface IOrcaTool
 
 ### Auto-Discovery
 
-`ToolRegistry.DiscoverTools()` uses reflection to find all classes with the `[OrcaTool]` attribute. No manual registration needed — just implement the interface and add the attribute.
+`ToolRegistry.DiscoverTools()` uses reflection to find all classes implementing `IOrcaTool` in the assembly. Each tool is instantiated via `Activator.CreateInstance()` — no manual registration or attributes needed. Just implement `IOrcaTool` with a parameterless constructor and the registry picks it up.
+
+### ILogger Property Injection
+
+Tools can opt in to receiving a logger by declaring a public settable property:
+
+```csharp
+public ILogger? Logger { get; set; }
+```
+
+When `ToolRegistry` has an `ILoggerFactory` (passed to its constructor), it uses reflection to find this property and injects a category-specific logger after instantiation. This avoids constructor injection (which would break `Activator.CreateInstance`) while still providing structured logging for tools that need it.
 
 ## Data Flow: A User Prompt
 
@@ -192,8 +251,10 @@ Here's the complete path a user prompt takes through the system:
 ## Key Design Patterns
 
 - **Separation of concerns:** UI (Cli) vs logic (Core) vs tools (Tools) — clean project boundaries
-- **Interface-based tools:** `IOrcaTool` with attribute-based discovery enables easy extension
+- **Interface-based tools:** `IOrcaTool` with reflection-based discovery enables easy extension
 - **Graceful degradation:** Native tool calling → text-based fallback → nudge → retry loop detection
 - **Linked cancellation:** `_generationCts` linked to app CTS allows per-generation Ctrl+C without killing the app
 - **Fire-and-forget hooks:** Post-tool hooks never block the agent loop
 - **Token estimation:** Simple char/4 heuristic for context tracking (good enough for compaction decisions)
+- **Per-domain rate limiting:** `DomainRateLimiter` throttles web requests with a 1.5s minimum delay per domain using `ConcurrentDictionary` + `SemaphoreSlim`
+- **Property-based logger injection:** Tools opt into logging via a public `Logger` property, injected by `ToolRegistry` at discovery time — avoids constructor injection constraints
