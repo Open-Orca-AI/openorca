@@ -33,7 +33,10 @@ internal sealed class ToolCallParser
     private static readonly Regex UnclosedToolCallRegex = new(@"<tool_call>\s*(.*?)\s*$", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Bare JSON tool call patterns (pattern 5)
-    private static readonly Regex BareJsonToolCallRegex = new(@"\{[^{}]*""name""\s*:\s*""[^""]+""[^{}]*""arguments""\s*:\s*\{[^}]*\}[^{}]*\}", RegexOptions.Singleline | RegexOptions.Compiled);
+    // Supports one level of nested braces in arguments (e.g. {"opts": {"key": "val"}})
+    private static readonly Regex BareJsonToolCallRegex = new(
+        @"\{\s*""name""\s*:\s*""[^""]+""[^{}]*""arguments""\s*:\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\}",
+        RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex WrappedToolCallRegex = new(@"\{\s*""tool_call""\s*:\s*(\{.*?\})\s*\}", RegexOptions.Singleline | RegexOptions.Compiled);
 
     // Nudge detection patterns

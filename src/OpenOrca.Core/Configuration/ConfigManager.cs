@@ -42,6 +42,8 @@ public sealed class ConfigManager
             Config.Context.ContextWindowSize = 8192;
         if (Config.Context.AutoCompactThreshold is <= 0 or > 1)
             Config.Context.AutoCompactThreshold = 0.8f;
+        if (Config.LmStudio.StreamingTimeoutSeconds <= 0)
+            Config.LmStudio.StreamingTimeoutSeconds = 120;
         if (Config.Agent.MaxIterations <= 0)
             Config.Agent.MaxIterations = 15;
         if (Config.Agent.TimeoutSeconds <= 0)

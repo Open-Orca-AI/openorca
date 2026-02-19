@@ -9,6 +9,7 @@ internal static class CliConstants
     public const int BashShortcutTimeoutSeconds = 120;
     public const int HookExecutionTimeoutSeconds = 30;
     public const int HttpProbeTimeoutSeconds = 15;
+    public const int StreamingIdleTimeoutSeconds = 120;
     public const int AgentMaxIterations = 25;
 
     // Truncation limits (characters)
