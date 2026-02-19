@@ -100,7 +100,10 @@ public class ShellToolTests
             var result = await tool.ExecuteAsync(args, CancellationToken.None);
 
             Assert.True(!result.IsError);
-            Assert.Equal(tempDir, Directory.GetCurrentDirectory());
+            // On macOS, /var is a symlink to /private/var, so GetCurrentDirectory() may
+            // return the resolved path. Compare by unique directory name to avoid symlink issues.
+            var expectedDirName = Path.GetFileName(tempDir);
+            Assert.EndsWith(expectedDirName, Directory.GetCurrentDirectory());
         }
         finally
         {
