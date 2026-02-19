@@ -72,7 +72,7 @@ internal sealed class AgentLoopRunner
         // Auto-compact check
         if (_config.Context.AutoCompactEnabled)
         {
-            var estimatedTokens = conversation.EstimateTokenCount();
+            var estimatedTokens = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
             var threshold = (int)(_config.Context.ContextWindowSize * _config.Context.AutoCompactThreshold);
             if (estimatedTokens > threshold)
             {

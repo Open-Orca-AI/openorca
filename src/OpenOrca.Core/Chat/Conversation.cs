@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 
 namespace OpenOrca.Core.Chat;
@@ -54,12 +55,43 @@ public sealed class Conversation
         SystemPrompt = null;
     }
 
-    public int EstimateTokenCount()
+    /// <summary>
+    /// Estimate token count using a configurable chars-per-token ratio.
+    /// Tool call/result content uses a lower ratio (more tokens per char) since
+    /// structured JSON tokenizes less efficiently than natural language.
+    /// </summary>
+    public int EstimateTokenCount(float charsPerToken = 3.5f)
     {
-        // Rough estimation: ~4 chars per token
-        var totalChars = (SystemPrompt?.Length ?? 0) +
-            _messages.Sum(m => m.Text?.Length ?? 0);
-        return totalChars / 4;
+        if (charsPerToken <= 0) charsPerToken = 3.5f;
+
+        // Tool/JSON content tokenizes less efficiently — use 75% of the normal ratio
+        var toolCharsPerToken = charsPerToken * 0.75f;
+
+        var textChars = SystemPrompt?.Length ?? 0;
+        var toolChars = 0;
+
+        foreach (var msg in _messages)
+        {
+            foreach (var content in msg.Contents)
+            {
+                switch (content)
+                {
+                    case FunctionCallContent fc:
+                        toolChars += fc.Name?.Length ?? 0;
+                        if (fc.Arguments is not null)
+                            toolChars += JsonSerializer.Serialize(fc.Arguments).Length;
+                        break;
+                    case FunctionResultContent fr:
+                        toolChars += fr.Result?.ToString()?.Length ?? 0;
+                        break;
+                    case TextContent tc:
+                        textChars += tc.Text?.Length ?? 0;
+                        break;
+                }
+            }
+        }
+
+        return (int)(textChars / charsPerToken + toolChars / toolCharsPerToken);
     }
 
     public void TruncateToFit(int maxTokens)

@@ -244,6 +244,7 @@ internal sealed class ConfigEditor
                     .HighlightStyle(Style.Parse("cyan"))
                     .AddChoices(
                         $"Context window size     : {ctx.ContextWindowSize}",
+                        $"Chars per token         : {ctx.CharsPerToken:F1}",
                         $"Auto-compact enabled    : {BoolDisplay(ctx.AutoCompactEnabled)}",
                         $"Auto-compact threshold  : {ctx.AutoCompactThreshold:P0}",
                         $"Preserve last N turns   : {ctx.CompactPreserveLastN}",
@@ -260,6 +261,15 @@ internal sealed class ConfigEditor
                         .Validate(v => v > 100
                             ? ValidationResult.Success()
                             : ValidationResult.Error("Must be > 100")));
+            }
+            else if (choice.StartsWith("Chars per token"))
+            {
+                ctx.CharsPerToken = AnsiConsole.Prompt(
+                    new TextPrompt<float>("Chars per token (1.0-10.0):")
+                        .DefaultValue(ctx.CharsPerToken)
+                        .Validate(v => v is >= 1f and <= 10f
+                            ? ValidationResult.Success()
+                            : ValidationResult.Error("Must be between 1.0 and 10.0")));
             }
             else if (choice.StartsWith("Auto-compact enabled"))
             {
@@ -325,6 +335,7 @@ internal sealed class ConfigEditor
         table.AddRow("", "");
         table.AddRow("[yellow]Context[/]", "");
         table.AddRow("  Window size", ctx.ContextWindowSize.ToString());
+        table.AddRow("  Chars per token", ctx.CharsPerToken.ToString("F1"));
         table.AddRow("  Auto-compact", BoolDisplay(ctx.AutoCompactEnabled));
         table.AddRow("  Compact threshold", $"{ctx.AutoCompactThreshold:P0}");
         table.AddRow("  Preserve last N", ctx.CompactPreserveLastN.ToString());

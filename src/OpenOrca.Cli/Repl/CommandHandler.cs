@@ -325,7 +325,7 @@ internal sealed class CommandHandler
             return;
         }
 
-        var tokensBefore = conversation.EstimateTokenCount();
+        var tokensBefore = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
         var msgCountBefore = conversation.Messages.Count;
 
         // Build summarization prompt
@@ -367,7 +367,7 @@ internal sealed class CommandHandler
             }
 
             var removed = conversation.CompactWithSummary(summary, preserveLastN);
-            var tokensAfter = conversation.EstimateTokenCount();
+            var tokensAfter = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
 
             AnsiConsole.MarkupLine($"\n[green]Compacted: {msgCountBefore} messages -> {conversation.Messages.Count} messages (~{tokensBefore} -> ~{tokensAfter} tokens)[/]");
         }
@@ -506,7 +506,7 @@ internal sealed class CommandHandler
 
     private void ShowContext(Conversation conversation)
     {
-        var estimatedTokens = conversation.EstimateTokenCount();
+        var estimatedTokens = conversation.EstimateTokenCount(_config.Context.CharsPerToken);
         var contextWindow = _config.Context.ContextWindowSize;
         var usagePercent = contextWindow > 0 ? (float)estimatedTokens / contextWindow * 100 : 0;
         var counts = conversation.GetMessageCountByRole();
@@ -562,7 +562,7 @@ internal sealed class CommandHandler
         table.AddRow("Total turns", _state.TotalTurns.ToString());
         table.AddRow("Output tokens", $"{_state.TotalOutputTokens:N0}");
         table.AddRow("Messages in context", conversation.Messages.Count.ToString());
-        table.AddRow("Context tokens", $"~{conversation.EstimateTokenCount():N0}");
+        table.AddRow("Context tokens", $"~{conversation.EstimateTokenCount(_config.Context.CharsPerToken):N0}");
 
         if (_state.TotalTurns > 0)
             table.AddRow("Avg tokens/turn", $"{_state.TotalOutputTokens / _state.TotalTurns:N0}");
