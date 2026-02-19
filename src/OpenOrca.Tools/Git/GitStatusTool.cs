@@ -41,6 +41,8 @@ internal static class GitHelper
         return $"\"{escaped}\"";
     }
 
+    private const int GitTimeoutSeconds = 60;
+
     public static async Task<ToolResult> RunGitAsync(string arguments, string workingDirectory, CancellationToken ct)
     {
         workingDirectory = Path.GetFullPath(workingDirectory);
@@ -69,14 +71,21 @@ internal static class GitHelper
             };
 
             using var process = Process.Start(psi)!;
-            var output = await process.StandardOutput.ReadToEndAsync(ct);
-            var error = await process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(GitTimeoutSeconds));
+
+            var output = await process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+            var error = await process.StandardError.ReadToEndAsync(timeoutCts.Token);
+            await process.WaitForExitAsync(timeoutCts.Token);
 
             if (process.ExitCode != 0)
                 return ToolResult.Error(string.IsNullOrEmpty(error) ? output : error);
 
             return ToolResult.Success(string.IsNullOrEmpty(output) ? "(no output)" : output);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return ToolResult.Error($"Git command timed out after {GitTimeoutSeconds}s: git {arguments}");
         }
         catch (Exception ex)
         {

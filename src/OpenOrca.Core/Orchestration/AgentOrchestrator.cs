@@ -41,7 +41,9 @@ public sealed class AgentOrchestrator
 
         try
         {
-            await RunAgentAsync(context, ct);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_config.Agent.TimeoutSeconds));
+            await RunAgentAsync(context, timeoutCts.Token);
             context.Status = AgentStatus.Completed;
             context.CompletedAt = DateTime.UtcNow;
         }
@@ -74,7 +76,7 @@ public sealed class AgentOrchestrator
 
     private async Task RunAgentAsync(AgentContext context, CancellationToken ct)
     {
-        const int maxIterations = 15;
+        var maxIterations = _config.Agent.MaxIterations;
 
         context.Conversation.AddSystemMessage(
             $"""
