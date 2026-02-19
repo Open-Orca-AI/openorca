@@ -129,7 +129,7 @@ internal sealed class CommandHandler
         }
     }
 
-    public async Task ExecuteBashShortcutAsync(string command)
+    public async Task ExecuteBashShortcutAsync(string command, CancellationToken ct = default)
     {
         _logger.LogInformation("Bash shortcut: {Command}", command);
 
@@ -166,7 +166,8 @@ internal sealed class CommandHandler
                     await proc.StandardInput.WriteLineAsync(command);
                     proc.StandardInput.Close();
 
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CliConstants.BashShortcutTimeoutSeconds));
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(CliConstants.BashShortcutTimeoutSeconds));
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                     stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
                     stderr = await proc.StandardError.ReadToEndAsync(cts.Token);
                     await proc.WaitForExitAsync(cts.Token);

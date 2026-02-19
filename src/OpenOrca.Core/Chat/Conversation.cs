@@ -134,9 +134,8 @@ public sealed class Conversation
         var removedCount = preserveStartIndex;
         _messages.RemoveRange(0, preserveStartIndex);
 
-        // Insert summary as the first message
+        // Insert summary as the first message (no fake assistant response)
         _messages.Insert(0, new ChatMessage(ChatRole.User, "[Conversation summary]\n" + summary));
-        _messages.Insert(1, new ChatMessage(ChatRole.Assistant, "Understood. I have the context from the conversation summary above. How can I help?"));
 
         return removedCount;
     }

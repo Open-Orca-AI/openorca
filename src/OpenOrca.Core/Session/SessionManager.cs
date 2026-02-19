@@ -89,7 +89,9 @@ public sealed class SessionManager
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to deserialize tool call arguments for {Name}", tc.Name);
+                            _logger.LogWarning(ex, "Failed to deserialize tool call arguments for {Name}, storing raw JSON as fallback", tc.Name);
+                            // Preserve the raw JSON string so data isn't lost
+                            args = new Dictionary<string, object?> { ["_raw_json"] = tc.Arguments };
                         }
                     }
                     chatMessage.Contents.Add(new FunctionCallContent(tc.CallId ?? "", tc.Name, args));
