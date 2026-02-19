@@ -62,12 +62,18 @@ public sealed class Conversation
         return totalChars / 4;
     }
 
-    public void TruncateToFit(int maxTokens)
+    /// <summary>
+    /// Removes oldest messages to fit within token limit.
+    /// Returns true if the conversation fits within maxTokens after truncation.
+    /// </summary>
+    public bool TruncateToFit(int maxTokens)
     {
         while (_messages.Count > 2 && EstimateTokenCount() > maxTokens)
         {
             _messages.RemoveAt(0);
         }
+
+        return EstimateTokenCount() <= maxTokens;
     }
 
     /// <summary>
