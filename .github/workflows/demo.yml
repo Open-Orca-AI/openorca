@@ -1,0 +1,93 @@
+name: Demo GIF
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  record-demo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install VHS and ffmpeg
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+          sudo apt-get update
+          sudo apt-get install -y vhs ffmpeg
+
+      - name: Publish OpenOrca
+        run: |
+          dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
+          chmod +x publish/openorca
+          echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
+
+      - name: Create demo config
+        run: |
+          mkdir -p ~/.openorca
+          cat > ~/.openorca/config.json << 'EOCONFIG'
+          {
+            "lmStudio": {
+              "baseUrl": "http://localhost:1234/v1",
+              "model": "demo-model-7b",
+              "nativeToolCalling": false,
+              "timeoutSeconds": 30
+            },
+            "permissions": {
+              "autoApproveAll": true
+            },
+            "session": {
+              "autoSave": false
+            },
+            "context": {
+              "contextWindowSize": 8192,
+              "autoCompactEnabled": false
+            }
+          }
+          EOCONFIG
+
+      - name: Start mock server
+        run: |
+          python demo/mock-server.py &
+          echo "Waiting for mock server..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:1234/v1/models > /dev/null 2>&1; then
+              echo "Mock server ready."
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Record demo GIF
+        run: vhs demo/demo.tape
+
+      - name: Upload GIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gif
+          path: demo/demo.gif
+          retention-days: 30
+
+      - name: Commit GIF to repo
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add demo/demo.gif
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update demo GIF [skip ci]"
+          git push

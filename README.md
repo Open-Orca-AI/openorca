@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
 
+![OpenOrca Demo](demo/demo.gif)
+
 **OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 31 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
 
 Think of it as a local, private, open-source alternative to cloud-based AI coding assistants.
