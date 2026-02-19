@@ -53,7 +53,9 @@ public sealed class BashTool : IOrcaTool
             var psi = new ProcessStartInfo
             {
                 FileName = isWindows ? "cmd.exe" : "/bin/bash",
-                Arguments = isWindows ? $"/c {command}" : $"-c \"{command.Replace("\"", "\\\"")}\"",
+                Arguments = isWindows
+                    ? $"/s /c \"{command.Replace("\"", "\\\"")}\""
+                    : $"-c \"{command.Replace("\"", "\\\"")}\"",
                 WorkingDirectory = workDir,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
