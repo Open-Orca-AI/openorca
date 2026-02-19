@@ -613,8 +613,13 @@ internal sealed class CommandHandler
                     {
                         UseShellExecute = true
                     };
-                    var proc = Process.Start(psi);
-                    proc?.WaitForExit();
+                    using var proc = Process.Start(psi);
+                    if (proc is null)
+                    {
+                        AnsiConsole.MarkupLine("[red]Failed to launch editor.[/]");
+                        break;
+                    }
+                    proc.WaitForExit();
                     AnsiConsole.MarkupLine("[green]ORCA.md updated.[/]");
                 }
                 catch (Exception ex)
