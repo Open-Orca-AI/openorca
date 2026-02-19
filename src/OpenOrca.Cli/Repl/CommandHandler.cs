@@ -171,7 +171,7 @@ internal sealed class CommandHandler
                     if (proc is null)
                         throw new InvalidOperationException("Failed to start shell process.");
 
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(CliConstants.BashShortcutTimeoutSeconds));
                     stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
                     stderr = await proc.StandardError.ReadToEndAsync(cts.Token);
                     await proc.WaitForExitAsync(cts.Token);
@@ -179,10 +179,10 @@ internal sealed class CommandHandler
                 });
 
             // Truncate for display
-            if (stdout.Length > 5000)
-                stdout = stdout[..5000] + "\n... (truncated)";
-            if (stderr.Length > 5000)
-                stderr = stderr[..5000] + "\n... (truncated)";
+            if (stdout.Length > CliConstants.BashOutputMaxChars)
+                stdout = stdout[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
+            if (stderr.Length > CliConstants.BashOutputMaxChars)
+                stderr = stderr[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
 
             if (!string.IsNullOrWhiteSpace(stdout))
             {
@@ -352,7 +352,7 @@ internal sealed class CommandHandler
             var text = msg.Text ?? string.Join("", msg.Contents.OfType<TextContent>().Select(t => t.Text));
             if (!string.IsNullOrWhiteSpace(text))
                 summaryMessages.Add(new ChatMessage(msg.Role == ChatRole.Tool ? ChatRole.User : msg.Role,
-                    $"[{msg.Role.Value}]: {(text.Length > 2000 ? text[..2000] + "..." : text)}"));
+                    $"[{msg.Role.Value}]: {(text.Length > CliConstants.LogTextMaxChars ? text[..CliConstants.LogTextMaxChars] + "..." : text)}"));
         }
 
         try
@@ -367,7 +367,7 @@ internal sealed class CommandHandler
                     var options = new ChatOptions
                     {
                         Temperature = 0.3f,
-                        MaxOutputTokens = 500,
+                        MaxOutputTokens = CliConstants.CompactMaxOutputTokens,
                     };
                     if (_config.LmStudio.Model is not null)
                         options.ModelId = _config.LmStudio.Model;
@@ -828,7 +828,7 @@ internal sealed class CommandHandler
             {
                 proc.StandardInput.Write(cleaned);
                 proc.StandardInput.Close();
-                proc.WaitForExit(5000);
+                proc.WaitForExit(CliConstants.ClipboardProcessWaitMs);
             }
 
             AnsiConsole.MarkupLine($"[green]Copied {cleaned.Length} chars to clipboard.[/]");
@@ -856,8 +856,8 @@ internal sealed class CommandHandler
             {
                 lines.Add("## System Prompt");
                 var sp = conversation.SystemPrompt;
-                if (sp.Length > 500)
-                    sp = sp[..500] + "\n... (truncated)";
+                if (sp.Length > CliConstants.SystemPromptDisplayMaxChars)
+                    sp = sp[..CliConstants.SystemPromptDisplayMaxChars] + "\n... (truncated)";
                 lines.Add("```");
                 lines.Add(sp);
                 lines.Add("```");
@@ -891,8 +891,8 @@ internal sealed class CommandHandler
                     lines.Add("**Tool result:**");
                     lines.Add("```");
                     var resultText = fr.Result?.ToString() ?? "(no result)";
-                    if (resultText.Length > 1000)
-                        resultText = resultText[..1000] + "\n... (truncated)";
+                    if (resultText.Length > CliConstants.ToolResultLogMaxChars)
+                        resultText = resultText[..CliConstants.ToolResultLogMaxChars] + "\n... (truncated)";
                     lines.Add(resultText);
                     lines.Add("```");
                 }

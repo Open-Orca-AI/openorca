@@ -15,8 +15,8 @@ namespace OpenOrca.Cli.Repl;
 /// </summary>
 internal sealed class AgentLoopRunner
 {
-    internal const int MaxIterations = 25;
-    private static readonly HttpClient SharedProbeClient = new() { Timeout = TimeSpan.FromSeconds(15) };
+    internal const int MaxIterations = CliConstants.AgentMaxIterations;
+    private static readonly HttpClient SharedProbeClient = new() { Timeout = TimeSpan.FromSeconds(CliConstants.HttpProbeTimeoutSeconds) };
 
     private readonly IChatClient _chatClient;
     private readonly OrcaConfig _config;
