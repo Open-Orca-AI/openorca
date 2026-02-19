@@ -546,7 +546,7 @@ internal sealed class CommandHandler
         var filledWidth = (int)(usagePercent / 100 * barWidth);
         filledWidth = Math.Clamp(filledWidth, 0, barWidth);
         var bar = new string('#', filledWidth) + new string('-', barWidth - filledWidth);
-        AnsiConsole.MarkupLine($"  [{usageColor}][{bar}][/]");
+        AnsiConsole.MarkupLine($"  [{usageColor}]{Markup.Escape($"[{bar}]")}[/]");
     }
 
     private void ShowStats(Conversation conversation)

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   build-and-test:
     strategy:
@@ -29,3 +33,65 @@ jobs:
 
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
+
+  record-demo:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.body, '[x] Regenerate demo GIF'))
+
+    steps:
+      - name: Checkout PR branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Checkout branch
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install VHS, ttyd, and ffmpeg
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+          sudo apt-get update
+          sudo apt-get install -y vhs ffmpeg
+          VHS_TTYD_VERSION=$(curl -s https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep tag_name | cut -d'"' -f4)
+          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${VHS_TTYD_VERSION}/ttyd.x86_64" -o /tmp/ttyd
+          chmod +x /tmp/ttyd
+          sudo mv /tmp/ttyd /usr/local/bin/ttyd
+
+      - name: Publish OpenOrca
+        run: |
+          dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
+          chmod +x publish/openorca
+          echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
+
+      - name: Record demo GIF
+        run: vhs demo/demo.tape
+
+      - name: Upload GIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gif
+          path: demo/demo.gif
+          retention-days: 30
+
+      - name: Commit GIF to PR branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add demo/demo.gif
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update demo GIF [skip ci]"
+          git push
