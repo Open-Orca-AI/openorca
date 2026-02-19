@@ -11,6 +11,36 @@ namespace OpenOrca.Cli.Repl;
 /// </summary>
 internal sealed class ToolCallParser
 {
+    // Tag stripping patterns
+    private static readonly Regex ThinkBlockRegex = new(@"<think>.*?</think>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ThinkUnclosedRegex = new(@"<think>.*$", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AssistantBlockRegex = new(@"<assistant>.*?</assistant>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AssistantTagRegex = new(@"</?assistant>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Tool call tag patterns (1-4)
+    private static readonly Regex[] TagPatterns =
+    [
+        new(@"<tool_call>\s*(.*?)\s*</tool_call>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"<\|tool_call\|>\s*(.*?)\s*<\|/tool_call\|>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"\[TOOL_CALL\]\s*(.*?)\s*\[/TOOL_CALL\]", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        new(@"<function_call>\s*(.*?)\s*</function_call>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled),
+    ];
+
+    // JSON in code fences
+    private static readonly Regex CodeFenceJsonRegex = new(@"```(?:json)?\s*\n?\s*(\{.*?\})\s*\n?\s*```", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    // Unclosed tool_call tag
+    private static readonly Regex UnclosedToolCallRegex = new(@"<tool_call>\s*(.*?)\s*$", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Bare JSON tool call patterns (pattern 5)
+    private static readonly Regex BareJsonToolCallRegex = new(@"\{[^{}]*""name""\s*:\s*""[^""]+""[^{}]*""arguments""\s*:\s*\{[^}]*\}[^{}]*\}", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex WrappedToolCallRegex = new(@"\{\s*""tool_call""\s*:\s*(\{.*?\})\s*\}", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    // Nudge detection patterns
+    private static readonly Regex CodeBlockToolJsonRegex = new(@"```(?:json)?\s*\n?\s*\{[^}]*""name""\s*:", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex ActionWordsRegex = new(@"\b(creat|writ|save|generat|implement|add|make|updat|modif)\w*\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FilePathRegex = new(@"[\w./\\]+\.\w{1,5}\b", RegexOptions.Compiled);
+
     private readonly ILogger _logger;
 
     public ToolCallParser(ILogger logger)
@@ -30,12 +60,12 @@ internal sealed class ToolCallParser
 
         // Prefer the text OUTSIDE <think> blocks (the "action" portion).
         // Only fall back to searching inside <think> if nothing found outside.
-        var stripped = Regex.Replace(text, @"<think>.*?</think>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
+        var stripped = ThinkBlockRegex.Replace(text, "").Trim();
         // Also handle unclosed <think> (model started thinking and never closed it)
-        stripped = Regex.Replace(stripped, @"<think>.*$", "", RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
+        stripped = ThinkUnclosedRegex.Replace(stripped, "").Trim();
         // Strip <assistant> role tags that some models (Mistral) emit — these pollute tool call content
-        stripped = Regex.Replace(stripped, @"<assistant>.*?</assistant>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
-        stripped = Regex.Replace(stripped, @"</?assistant>", "", RegexOptions.IgnoreCase).Trim();
+        stripped = AssistantBlockRegex.Replace(stripped, "").Trim();
+        stripped = AssistantTagRegex.Replace(stripped, "").Trim();
 
         // Search stripped text first (outside <think>), fall back to full text
         var textVariants = new List<string>();
@@ -48,25 +78,16 @@ internal sealed class ToolCallParser
         foreach (var variant in textVariants)
         {
             // Pattern 1-3: Tagged tool calls
-            var tagPatterns = new[]
+            foreach (var pattern in TagPatterns)
             {
-                @"<tool_call>\s*(.*?)\s*</tool_call>",
-                @"<\|tool_call\|>\s*(.*?)\s*<\|/tool_call\|>",
-                @"\[TOOL_CALL\]\s*(.*?)\s*\[/TOOL_CALL\]",
-                @"<function_call>\s*(.*?)\s*</function_call>",
-            };
-
-            foreach (var pattern in tagPatterns)
-            {
-                foreach (Match match in Regex.Matches(variant, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase))
+                foreach (Match match in pattern.Matches(variant))
                 {
                     candidates.Add(match.Groups[1].Value.Trim());
                 }
             }
 
             // Pattern 4: JSON in code fences
-            foreach (Match match in Regex.Matches(variant,
-                @"```(?:json)?\s*\n?\s*(\{.*?\})\s*\n?\s*```", RegexOptions.Singleline))
+            foreach (Match match in CodeFenceJsonRegex.Matches(variant))
             {
                 candidates.Add(match.Groups[1].Value.Trim());
             }
@@ -75,8 +96,7 @@ internal sealed class ToolCallParser
             // Only try if no closed tags were found — extract text after last <tool_call> to end
             if (candidates.Count == 0)
             {
-                var unclosedMatch = Regex.Match(variant,
-                    @"<tool_call>\s*(.*?)\s*$", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                var unclosedMatch = UnclosedToolCallRegex.Match(variant);
                 if (unclosedMatch.Success)
                 {
                     candidates.Add(unclosedMatch.Groups[1].Value.Trim());
@@ -94,16 +114,13 @@ internal sealed class ToolCallParser
         {
             foreach (var variant in textVariants)
             {
-                foreach (Match match in Regex.Matches(variant,
-                    @"\{[^{}]*""name""\s*:\s*""[^""]+""[^{}]*""arguments""\s*:\s*\{[^}]*\}[^{}]*\}",
-                    RegexOptions.Singleline))
+                foreach (Match match in BareJsonToolCallRegex.Matches(variant))
                 {
                     candidates.Add(match.Value.Trim());
                 }
 
                 // Also try: {"tool_call": {...}} wrapper
-                foreach (Match match in Regex.Matches(variant,
-                    @"\{\s*""tool_call""\s*:\s*(\{.*?\})\s*\}", RegexOptions.Singleline))
+                foreach (Match match in WrappedToolCallRegex.Matches(variant))
                 {
                     candidates.Add(match.Groups[1].Value.Trim());
                 }
@@ -180,16 +197,14 @@ internal sealed class ToolCallParser
             return false;
 
         // Strip <think> blocks to look at the "action" portion only
-        var actionText = Regex.Replace(text, @"<think>.*?</think>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
-        actionText = Regex.Replace(actionText, @"<think>.*$", "", RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
+        var actionText = ThinkBlockRegex.Replace(text, "").Trim();
+        actionText = ThinkUnclosedRegex.Replace(actionText, "").Trim();
 
         if (string.IsNullOrWhiteSpace(actionText))
             return false;
 
         // Check for code blocks that contain tool-like JSON (name + arguments)
-        var hasCodeBlockWithToolJson = Regex.IsMatch(actionText,
-            @"```(?:json)?\s*\n?\s*\{[^}]*""name""\s*:", RegexOptions.Singleline);
-        if (hasCodeBlockWithToolJson)
+        if (CodeBlockToolJsonRegex.IsMatch(actionText))
         {
             _logger.LogDebug("Nudge trigger: code block with tool-like JSON");
             return true;
@@ -198,11 +213,8 @@ internal sealed class ToolCallParser
         // Check for code blocks with file content when write_file/edit_file tools exist
         // Pattern: model shows file content in a code block and says "create" or "write" nearby
         var hasCodeBlock = actionText.Contains("```");
-        var hasActionWords = Regex.IsMatch(actionText,
-            @"\b(creat|writ|save|generat|implement|add|make|updat|modif)\w*\b",
-            RegexOptions.IgnoreCase);
-        var hasFilePath = Regex.IsMatch(actionText,
-            @"[\w./\\]+\.\w{1,5}\b"); // something.ext
+        var hasActionWords = ActionWordsRegex.IsMatch(actionText);
+        var hasFilePath = FilePathRegex.IsMatch(actionText); // something.ext
 
         if (hasCodeBlock && hasActionWords && hasFilePath)
         {

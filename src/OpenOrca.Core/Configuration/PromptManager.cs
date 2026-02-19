@@ -5,6 +5,9 @@ namespace OpenOrca.Core.Configuration;
 
 public sealed class PromptManager
 {
+    private static readonly Regex NonAlphanumRegex = new(@"[^a-z0-9\-]", RegexOptions.Compiled);
+    private static readonly Regex MultiDashRegex = new(@"-+", RegexOptions.Compiled);
+
     private readonly ILogger<PromptManager> _logger;
     private readonly string _promptsDir;
 
@@ -21,8 +24,8 @@ public sealed class PromptManager
     public static string Slugify(string modelId)
     {
         var slug = modelId.Trim().ToLowerInvariant();
-        slug = Regex.Replace(slug, @"[^a-z0-9\-]", "-");
-        slug = Regex.Replace(slug, @"-+", "-");
+        slug = NonAlphanumRegex.Replace(slug, "-");
+        slug = MultiDashRegex.Replace(slug, "-");
         slug = slug.Trim('-');
         return slug;
     }
