@@ -624,7 +624,7 @@ internal sealed class AgentLoopRunner
                                 : body;
                     }
                 }
-                catch { /* not JSON, use raw body */ }
+                catch (JsonException) { /* not JSON, use raw body */ }
 
                 return body;
             }
