@@ -40,7 +40,8 @@ public sealed class WriteFileTool : IOrcaTool
         path = Path.GetFullPath(path);
 
         // Reject empty or garbage content (e.g., bare role tags like "<assistant>")
-        if (string.IsNullOrWhiteSpace(content) || Regex.IsMatch(content.Trim(), @"^</?[\w]+>$"))
+        if (string.IsNullOrWhiteSpace(content) ||
+            Regex.IsMatch(content.Trim(), @"^</?(assistant|user|system|tool)>$", RegexOptions.IgnoreCase))
         {
             return ToolResult.Error(
                 $"Error: The content for '{Path.GetFileName(path)}' is empty or contains only a role tag instead of actual file content. " +
