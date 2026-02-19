@@ -106,8 +106,11 @@ public class DeleteMoveToolTests : IDisposable
     public async Task DeleteFileTool_RejectsDangerousPath()
     {
         var tool = new DeleteFileTool();
-        var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var args = MakeArgs($$"""{"path": "{{EscapePath(winDir)}}"}""");
+        // Use a platform-appropriate dangerous path: Windows dir on Windows, /etc on Linux/macOS
+        var dangerousPath = OperatingSystem.IsWindows()
+            ? Environment.GetFolderPath(Environment.SpecialFolder.Windows)
+            : "/etc";
+        var args = MakeArgs($$"""{"path": "{{EscapePath(dangerousPath)}}"}""");
 
         var result = await tool.ExecuteAsync(args, CancellationToken.None);
 
