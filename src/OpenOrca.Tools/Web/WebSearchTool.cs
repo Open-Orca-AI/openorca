@@ -40,6 +40,8 @@ public sealed class WebSearchTool : IOrcaTool
             var encodedQuery = Uri.EscapeDataString(query);
             var url = $"https://html.duckduckgo.com/html/?q={encodedQuery}";
 
+            await DomainRateLimiter.ThrottleAsync(url, ct);
+
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Accept", "text/html");
 
@@ -87,18 +89,25 @@ public sealed class WebSearchTool : IOrcaTool
         }
     }
 
-    // Multiple regex patterns for resilience against DuckDuckGo HTML changes
+    // Multiple regex patterns for resilience against DuckDuckGo HTML changes.
+    // Order-agnostic: covers class-before-href and href-before-class.
+    // Uses [^>]*? (lazy) to avoid overshooting into adjacent tags.
     private static readonly Regex[] TitleLinkPatterns =
     [
-        new(@"class=""result__a""[^>]*href=""([^""]+)""[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
-        new(@"class='result__a'[^>]*href='([^']+)'[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
-        new(@"href=""([^""]+)""[^>]*class=""result__a""[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        // class="result__a" before href (double quotes)
+        new(@"<a\s+[^>]*?class=""result__a""[^>]*?href=""([^""]+)""[^>]*?>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        // href before class (double quotes)
+        new(@"<a\s+[^>]*?href=""([^""]+)""[^>]*?class=""result__a""[^>]*?>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        // Single quote variants
+        new(@"<a\s+[^>]*?class='result__a'[^>]*?href='([^']+)'[^>]*?>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"<a\s+[^>]*?href='([^']+)'[^>]*?class='result__a'[^>]*?>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
     ];
 
+    // Snippet patterns — use \w+ for closing tag to handle any container element
     private static readonly Regex[] SnippetPatterns =
     [
-        new(@"class=""result__snippet""[^>]*>(.*?)</(?:a|span|div)>", RegexOptions.Singleline | RegexOptions.Compiled),
-        new(@"class='result__snippet'[^>]*>(.*?)</(?:a|span|div)>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"class=""result__snippet""[^>]*>(.*?)</\w+>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"class='result__snippet'[^>]*>(.*?)</\w+>", RegexOptions.Singleline | RegexOptions.Compiled),
     ];
 
     private static readonly Regex UddgPattern = new(@"uddg=([^&]+)", RegexOptions.Compiled);
