@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Utilities;
 
@@ -9,6 +10,8 @@ namespace OpenOrca.Tools.Network;
 
 public sealed class NetworkDiagnosticsTool : IOrcaTool
 {
+    public ILogger? Logger { get; set; }
+
     public string Name => "network_diagnostics";
     public string Description => "Network diagnostics: ping a host, perform DNS lookup, or check HTTP connectivity. Useful for debugging connection issues.";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.ReadOnly;

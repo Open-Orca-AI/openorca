@@ -1,11 +1,14 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenOrca.Tools.Abstractions;
 
 namespace OpenOrca.Tools.Shell;
 
 public sealed class BashTool : IOrcaTool
 {
+    public ILogger? Logger { get; set; }
+
     public string Name => "bash";
     public string Description => "Execute a shell command and return its output. Uses cmd.exe on Windows and /bin/bash on Unix. Supports working directory and timeout (default 120s). Output is truncated at 30,000 chars. Use for builds, tests, scripts, installs, and any system command.";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.Dangerous;
@@ -42,6 +45,8 @@ public sealed class BashTool : IOrcaTool
         var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? ts.GetInt32() : 120;
 
         workDir = Path.GetFullPath(workDir);
+        Logger?.LogDebug("Executing bash: {Command} in {WorkDir} (timeout: {Timeout}s)",
+            command.Length > 200 ? command[..200] + "..." : command, workDir, timeoutSec);
 
         if (!Directory.Exists(workDir))
             return ToolResult.Error($"Working directory not found: {workDir}");

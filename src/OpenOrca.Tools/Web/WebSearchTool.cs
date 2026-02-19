@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Utilities;
 
@@ -9,6 +10,8 @@ namespace OpenOrca.Tools.Web;
 
 public sealed class WebSearchTool : IOrcaTool
 {
+    public ILogger? Logger { get; set; }
+
     public string Name => "web_search";
     public string Description => "Search the web using DuckDuckGo and return result titles, URLs, and snippets. No API key required. Use for finding documentation, answers, package info, and current information.";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.ReadOnly;
