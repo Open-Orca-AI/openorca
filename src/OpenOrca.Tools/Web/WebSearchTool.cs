@@ -52,7 +52,13 @@ public sealed class WebSearchTool : IOrcaTool
             var results = ParseResults(html, maxResults);
 
             if (results.Count == 0)
-                return ToolResult.Success($"No results found for: {query}");
+            {
+                // Distinguish between no results and a parsing failure
+                var hasResultMarkers = html.Contains("result__a") || html.Contains("result__snippet");
+                return hasResultMarkers
+                    ? ToolResult.Error("Search returned results but failed to parse them. DuckDuckGo HTML structure may have changed.")
+                    : ToolResult.Success($"No results found for: {query}");
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine($"Search results for: {query}");
@@ -81,17 +87,52 @@ public sealed class WebSearchTool : IOrcaTool
         }
     }
 
+    // Multiple regex patterns for resilience against DuckDuckGo HTML changes
+    private static readonly Regex[] TitleLinkPatterns =
+    [
+        new(@"class=""result__a""[^>]*href=""([^""]+)""[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"class='result__a'[^>]*href='([^']+)'[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"href=""([^""]+)""[^>]*class=""result__a""[^>]*>(.*?)</a>", RegexOptions.Singleline | RegexOptions.Compiled),
+    ];
+
+    private static readonly Regex[] SnippetPatterns =
+    [
+        new(@"class=""result__snippet""[^>]*>(.*?)</(?:a|span|div)>", RegexOptions.Singleline | RegexOptions.Compiled),
+        new(@"class='result__snippet'[^>]*>(.*?)</(?:a|span|div)>", RegexOptions.Singleline | RegexOptions.Compiled),
+    ];
+
+    private static readonly Regex UddgPattern = new(@"uddg=([^&]+)", RegexOptions.Compiled);
+
     private static List<(string Title, string Url, string Snippet)> ParseResults(string html, int maxResults)
     {
         var results = new List<(string, string, string)>();
 
-        // DuckDuckGo HTML results are in <a class="result__a" href="...">Title</a>
-        // with snippets in <a class="result__snippet" ...>
-        var resultBlocks = Regex.Matches(html, @"class=""result__a""[^>]*href=""([^""]+)""[^>]*>(.*?)</a>",
-            RegexOptions.Singleline);
+        // Try each title/link pattern until one yields results
+        MatchCollection? resultBlocks = null;
+        foreach (var pattern in TitleLinkPatterns)
+        {
+            var matches = pattern.Matches(html);
+            if (matches.Count > 0)
+            {
+                resultBlocks = matches;
+                break;
+            }
+        }
 
-        var snippetBlocks = Regex.Matches(html, @"class=""result__snippet""[^>]*>(.*?)</(?:a|span)>",
-            RegexOptions.Singleline);
+        if (resultBlocks is null || resultBlocks.Count == 0)
+            return results;
+
+        // Try each snippet pattern
+        MatchCollection? snippetBlocks = null;
+        foreach (var pattern in SnippetPatterns)
+        {
+            var matches = pattern.Matches(html);
+            if (matches.Count > 0)
+            {
+                snippetBlocks = matches;
+                break;
+            }
+        }
 
         for (var i = 0; i < Math.Min(resultBlocks.Count, maxResults); i++)
         {
@@ -101,11 +142,11 @@ public sealed class WebSearchTool : IOrcaTool
 
             // DuckDuckGo wraps URLs in a redirect — extract the actual URL
             var actualUrl = rawUrl;
-            var uddgMatch = Regex.Match(rawUrl, @"uddg=([^&]+)");
+            var uddgMatch = UddgPattern.Match(rawUrl);
             if (uddgMatch.Success)
                 actualUrl = Uri.UnescapeDataString(uddgMatch.Groups[1].Value);
 
-            var snippet = i < snippetBlocks.Count
+            var snippet = snippetBlocks is not null && i < snippetBlocks.Count
                 ? StripTags(snippetBlocks[i].Groups[1].Value)
                 : "";
 
