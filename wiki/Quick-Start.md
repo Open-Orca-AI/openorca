@@ -68,6 +68,24 @@ For scripting or CI, pass a prompt directly and OpenOrca will run non-interactiv
 openorca --prompt "List all .cs files in this project"
 ```
 
+### CI/CD Usage
+
+Pre-approve tools and get structured JSON output for pipeline integration:
+
+```bash
+openorca --prompt "List all TODO comments" --allow bash,grep --output json
+# Output: {"response":"...","tokens":123}
+```
+
+### Resume a Session
+
+Pick up where you left off without navigating session menus:
+
+```bash
+openorca --continue           # Resume most recent session
+openorca --resume abc123      # Resume a specific session by ID
+```
+
 ## Demo Mode
 
 Run a demo without connecting to an LLM server:

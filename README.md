@@ -84,6 +84,23 @@ For CI/scripting, pass a prompt directly:
 openorca --prompt "List all .cs files in this project"
 ```
 
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--prompt "..."` | Run a single prompt non-interactively |
+| `--continue`, `-c` | Resume the most recent saved session |
+| `--resume <id>`, `-r <id>` | Resume a specific session by ID |
+| `--allow <tools>` | Pre-approve tools (comma-separated) for non-interactive mode |
+| `--output json` | Output structured JSON (with `--prompt`): `{"response":"...","tokens":N}` |
+| `--demo` | Run in demo mode without an LLM server |
+
+**CI/CD example:**
+
+```bash
+openorca --prompt "List all TODO comments" --allow bash,grep --output json
+```
+
 ## Configuration
 
 Config is stored at `~/.openorca/config.json`. Edit interactively with `/config` or modify the file directly.
@@ -252,6 +269,12 @@ OpenOrca.sln
 | `/doctor`, `/diag` | Run diagnostic checks |
 | `/copy`, `/cp` | Copy last response to clipboard |
 | `/export [path]` | Export conversation to markdown |
+| `/init` | Scaffold `.orca/ORCA.md` project instructions |
+| `/diff` | Show uncommitted git changes (staged + unstaged) |
+| `/undo` | Revert or stash uncommitted changes |
+| `/rename <name>` | Rename current session |
+| `/add <file> [...]` | Add file contents to conversation context |
+| `/ask <question>` | Chat without tool use (faster, cheaper) |
 | `!<command>` | Run shell command directly |
 | `/exit`, `/quit`, `/q` | Exit |
 

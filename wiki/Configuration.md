@@ -72,6 +72,16 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
 | `alwaysApprove` | string[] | `[]` | List of specific tool names to always auto-approve, regardless of risk level. Example: `["bash", "write_file"]` |
 | `disabledTools` | string[] | `[]` | List of tool names to completely disable. These tools won't appear in the system prompt or be callable. |
 
+### CLI Override: `--allow`
+
+You can pre-approve tools from the command line without modifying your config. This is useful for CI/CD pipelines:
+
+```bash
+openorca --prompt "Run the tests" --allow bash,read_file,grep
+```
+
+The `--allow` flag appends to `alwaysApprove` for that session only — it doesn't modify `config.json`.
+
 ### Permission Examples
 
 **Fully autonomous (trust everything):**

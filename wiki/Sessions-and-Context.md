@@ -8,6 +8,18 @@ OpenOrca manages conversation history through sessions and monitors context wind
 
 By default (`autoSave: true`), OpenOrca saves your conversation when you exit. The session is stored as a JSON file in `~/.openorca/sessions/`.
 
+### Resuming Sessions from the Command Line
+
+Instead of manually loading sessions with `/session load`, you can resume directly on startup:
+
+```bash
+openorca --continue          # Resume the most recent session
+openorca -c                  # Short form
+
+openorca --resume abc123     # Resume a specific session by ID
+openorca -r abc123           # Short form
+```
+
 ### Managing Sessions
 
 ```
@@ -16,6 +28,7 @@ By default (`autoSave: true`), OpenOrca saves your conversation when you exit. T
 > /session save My Refactor    # Save with a custom title
 > /session load abc123         # Load a session by ID
 > /session delete abc123       # Delete a session
+> /rename My New Title         # Rename the current session
 ```
 
 The session list shows: ID, title, last updated timestamp, and message count.

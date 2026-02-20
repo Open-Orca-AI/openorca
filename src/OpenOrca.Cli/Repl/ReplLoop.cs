@@ -69,6 +69,8 @@ public sealed class ReplLoop
         _commandHandler.Tools = tools;
     }
 
+    public void SetSessionId(string sessionId) => _state.CurrentSessionId = sessionId;
+
     /// <summary>
     /// Try to cancel the current generation. Returns true if a generation was cancelled.
     /// </summary>
@@ -88,6 +90,30 @@ public sealed class ReplLoop
         AnsiConsole.WriteLine();
 
         await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
+    }
+
+    /// <summary>
+    /// Run a single prompt and output the result as JSON. Used for CI/CD pipelines.
+    /// </summary>
+    public async Task RunSinglePromptJsonAsync(string prompt, CancellationToken ct)
+    {
+        // Suppress all Spectre.Console output during JSON mode
+        var conversation = _conversationManager.Active;
+        conversation.AddSystemMessage(await _systemPromptBuilder.GetSystemPromptAsync(_toolCallExecutor.Tools, _state.PlanMode));
+        conversation.AddUserMessage(prompt);
+
+        _logger.LogInformation("Single-prompt JSON mode: {Prompt}", prompt);
+
+        await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
+
+        var result = new
+        {
+            response = _state.LastAssistantResponse ?? "",
+            tokens = _state.TotalOutputTokens
+        };
+
+        // Write JSON to stdout (using System.Text.Json which is already imported in the project)
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -122,6 +148,37 @@ public sealed class ReplLoop
             var command = _commandParser.TryParse(input);
             if (command is not null)
             {
+                // /ask — chat without tools
+                if (command.Command == SlashCommand.Ask)
+                {
+                    if (command.Args.Length == 0)
+                    {
+                        AnsiConsole.MarkupLine("[yellow]Usage: /ask <question>[/]");
+                        continue;
+                    }
+
+                    var question = string.Join(" ", command.Args);
+                    conversation.AddUserMessage(question);
+
+                    var savedTools = _toolCallExecutor.Tools;
+                    try
+                    {
+                        _toolCallExecutor.Tools = [];
+                        var turnStopwatch = Stopwatch.StartNew();
+                        await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
+                        turnStopwatch.Stop();
+                        _state.TotalTurns++;
+                        AnsiConsole.Markup($"[dim][[{turnStopwatch.Elapsed.TotalSeconds:F1}s]][/]");
+                    }
+                    finally
+                    {
+                        _toolCallExecutor.Tools = savedTools;
+                    }
+
+                    AnsiConsole.WriteLine();
+                    continue;
+                }
+
                 if (await _commandHandler.HandleCommandAsync(command, conversation, ct))
                     break;
                 continue;
