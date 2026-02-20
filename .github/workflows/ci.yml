@@ -45,6 +45,20 @@ jobs:
           path: coverage/**/coverage.cobertura.xml
           retention-days: 14
 
+      - name: Publish Linux binary for demo recording
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
+          chmod +x publish/openorca
+
+      - name: Upload Linux binary
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openorca-linux-x64
+          path: publish/openorca
+          retention-days: 1
+
   record-demo:
     needs: build-and-test
     runs-on: ubuntu-latest
@@ -59,36 +73,46 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 1
 
       - name: Checkout branch
         if: github.event_name != 'pull_request'
         uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          fetch-depth: 1
+
+      - name: Download OpenOrca binary
+        uses: actions/download-artifact@v4
+        with:
+          name: openorca-linux-x64
+          path: publish
 
       - name: Install VHS, ttyd, and ffmpeg
         run: |
-          sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-          sudo apt-get update
-          sudo apt-get install -y vhs ffmpeg
-          VHS_TTYD_VERSION=$(curl -s https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep tag_name | cut -d'"' -f4)
-          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${VHS_TTYD_VERSION}/ttyd.x86_64" -o /tmp/ttyd
+          # Download VHS and ttyd binaries in parallel while apt installs ffmpeg
+          # (avoids adding Charm apt repo + slow apt-get update)
+          curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v0.10.0/vhs_0.10.0_Linux_x86_64.tar.gz" -o /tmp/vhs.tar.gz &
+          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" -o /tmp/ttyd &
+          sudo apt-get install -y --no-install-recommends ffmpeg &
+          wait
+          tar xzf /tmp/vhs.tar.gz -C /tmp
+          sudo mv /tmp/vhs /usr/local/bin/
           chmod +x /tmp/ttyd
-          sudo mv /tmp/ttyd /usr/local/bin/ttyd
-
-      - name: Publish OpenOrca
-        run: |
-          dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
+          sudo mv /tmp/ttyd /usr/local/bin/
           chmod +x publish/openorca
           echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
 
-      - name: Record demo GIF
+      - name: Record demo GIF (fast)
         run: vhs demo/demo.tape
+
+      - name: Slow down GIF to natural playback speed
+        run: |
+          # VHS records at ~4x speed to save CI time.
+          # Slow the raw GIF back to 1x with ffmpeg palette-aware conversion.
+          ffmpeg -i demo/demo-raw.gif \
+            -filter_complex "setpts=4.0*PTS,split[s0][s1];[s0]palettegen=max_colors=256:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5" \
+            -loop 0 -y demo/demo.gif
+          rm demo/demo-raw.gif
 
       - name: Upload GIF artifact
         uses: actions/upload-artifact@v4
