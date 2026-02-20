@@ -80,7 +80,10 @@ internal sealed class CommandHandler
                 return false;
 
             case SlashCommand.Config:
-                await _configEditor.ShowConfigAsync();
+                if (_config.DemoMode)
+                    _configEditor.RenderConfigTable();
+                else
+                    await _configEditor.ShowConfigAsync();
                 return false;
 
             case SlashCommand.Session:

@@ -306,7 +306,7 @@ internal sealed class ConfigEditor
         }
     }
 
-    private void RenderConfigTable()
+    public void RenderConfigTable()
     {
         var lm = _config.LmStudio;
         var p = _config.Permissions;
