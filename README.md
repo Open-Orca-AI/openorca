@@ -6,14 +6,14 @@
 
 ![OpenOrca Demo](demo/demo.gif)
 
-**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 31 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
+**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 34 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
 
 Think of it as a local, private, open-source alternative to cloud-based AI coding assistants.
 
 ## Features
 
 - **Autonomous agent loop** — the LLM plans, acts, observes results, and iterates up to 25 turns per request
-- **31 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, and more
+- **34 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, network diagnostics, archiving, and more
 - **Works with any local model** — Mistral, Llama, DeepSeek, Qwen, or any model served via OpenAI-compatible API
 - **Native + text-based tool calling** — auto-detects whether your model supports OpenAI function calling and falls back to text-based `<tool_call>` tags
 - **Streaming with live thinking indicator** — see tokens arrive in real-time, or collapse thinking with Ctrl+O
@@ -97,12 +97,14 @@ Config is stored at `~/.openorca/config.json`. Edit interactively with `/config`
     "temperature": 0.7,
     "maxTokens": null,
     "timeoutSeconds": 120,
-    "nativeToolCalling": false
+    "streamingTimeoutSeconds": 120,
+    "nativeToolCalling": false,
+    "promptProfile": null
   },
   "permissions": {
+    "autoApproveAll": false,
     "autoApproveReadOnly": true,
     "autoApproveModerate": false,
-    "autoApproveAll": false,
     "alwaysApprove": [],
     "disabledTools": []
   },
@@ -115,6 +117,10 @@ Config is stored at `~/.openorca/config.json`. Edit interactively with `/config`
   "session": {
     "autoSave": true,
     "maxSessions": 100
+  },
+  "hooks": {
+    "preToolHooks": {},
+    "postToolHooks": {}
   }
 }
 ```
@@ -144,18 +150,21 @@ OpenOrca.sln
 │   │   ├── Orchestration/    # AgentOrchestrator
 │   │   ├── Permissions/      # PermissionManager
 │   │   └── Session/          # SessionManager
-│   └── OpenOrca.Tools         # 31 tool implementations
+│   └── OpenOrca.Tools         # 34 tool implementations
 │       ├── FileSystem/       # read_file, write_file, edit_file, glob, grep, etc.
 │       ├── Shell/            # bash, background processes
 │       ├── Git/              # git_status, git_commit, git_push, etc.
 │       ├── GitHub/           # GitHub CLI wrapper
 │       ├── Web/              # web_fetch, web_search
+│       ├── Network/          # network_diagnostics
+│       ├── Archive/          # archive (zip create/extract/list)
 │       ├── Interactive/      # ask_user
-│       ├── Utility/          # think, task_list
+│       ├── Utility/          # think, task_list, env
 │       └── Agent/            # spawn_agent
 └── tests/
-    ├── OpenOrca.Core.Tests    # 49 unit tests
-    ├── OpenOrca.Tools.Tests   # 65 unit tests
+    ├── OpenOrca.Cli.Tests     # CLI and REPL unit tests
+    ├── OpenOrca.Core.Tests    # Core domain unit tests
+    ├── OpenOrca.Tools.Tests   # Tool unit tests
     └── OpenOrca.Harness       # Integration tests (requires LM Studio)
 ```
 
@@ -208,12 +217,20 @@ OpenOrca.sln
 | `web_search` | ReadOnly | Search with DuckDuckGo |
 | `github` | Moderate | GitHub CLI operations |
 
-### Utility & Interactive (4 tools)
+### Network & Archive (2 tools)
+
+| Tool | Risk | Description |
+|------|------|-------------|
+| `network_diagnostics` | ReadOnly | Ping, DNS lookup, or HTTP connectivity check |
+| `archive` | Moderate | Create, extract, or list zip archives |
+
+### Utility & Interactive (5 tools)
 
 | Tool | Risk | Description |
 |------|------|-------------|
 | `think` | ReadOnly | Step-by-step reasoning |
 | `task_list` | ReadOnly | Track progress on tasks |
+| `env` | ReadOnly | Inspect environment variables |
 | `ask_user` | ReadOnly | Ask user a question |
 | `spawn_agent` | Moderate | Launch a sub-agent |
 

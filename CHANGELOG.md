@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2025-02-20
+
+### Changed
+- **CI: optimised demo recording pipeline** — record at 4x speed and slow down with ffmpeg for natural playback
+- **CI: add NuGet caching** and Windows Defender exclusion to speed up builds
+- **CI: split build/test** and cross-compile releases for faster pipelines
+
+## [0.3.2] - 2025-02-19
+
+### Added
+- **Comprehensive GitHub wiki** — 16 pages covering installation, configuration, architecture, tool reference, troubleshooting, and more
+- **Wiki publish workflow** — auto-publishes wiki on releases
+- **Demo GIF pipeline** — automated terminal recording with VHS, embedded mock client (no external Python server needed)
+- **Demo trigger from PR** — checkbox in PR description triggers GIF regeneration
+
+### Fixed
+- **`/context` markup error** — fixed rendering bug in context display
+- Wait for CI before demo GIF generation
+
+## [0.3.1] - 2025-02-19
+
+### Added
+- **3 new tools** (31 → 34 total):
+  - `env` — inspect environment variables (get/list with prefix filtering)
+  - `archive` — create, extract, and list zip archives
+  - `network_diagnostics` — ping, DNS lookup, and HTTP connectivity checks
+- **OpenOrca.Cli.Tests** — new test project with 84 unit tests covering CommandParser, ToolCallParser, ToolCallExecutor, ReplState, ConcurrencyTests, and ConsoleHelper
+- **ILogger property injection** in tools — tools opt into logging via a public `Logger` property, injected by ToolRegistry at discovery time
+- **Code coverage** collection and quality gates in CI
+- **Security tests** — dedicated security validation test suite
+- **Streaming idle timeout** — resettable timeout per streaming loop (default 120s, configurable via `StreamingTimeoutSeconds`)
+- **Per-domain rate limiting** for web tools (1.5s minimum delay per domain)
+- **Progress spinners** for long-running CLI operations
+- **Configurable chars-per-token** estimation (`charsPerToken` in context config, default 3.5)
+- **URL validation** in ConfigEditor before saving base URL
+- **Input validation** in AgentOrchestrator
+
+### Fixed
+- **Shell injection prevention** — pass shell commands via stdin instead of argument escaping
+- **Git argument sanitization** — prevent shell injection in all git tool arguments
+- **Path traversal validation** — validate paths during recursive copy
+- **Text-based tool results** in AgentOrchestrator for non-native models
+- **Symlink resolution** before path safety checks
+- **Thread safety** in PermissionManager and ConversationManager
+- **CRLF line endings** handling in EditFileTool
+- **Socket exhaustion** prevention with shared static HttpClient
+- **Background process cleanup** on app exit and handle leak prevention
+- **WriteFileTool** content rejection narrowed to known LLM role tags
+- **Move overwrite** — delete existing destination directory before move
+- **Web search** fallback regex patterns and parsing failure detection
+- **Bare catch blocks** replaced with specific exception types
+- **Static compiled Regex** instances in ToolCallParser and PromptManager for performance
+
+### Changed
+- **Hardcoded timeouts and limits** centralized into `CliConstants`
+- **Ctrl+O thinking toggle** extracted into `CheckThinkingToggle()` method
+
 ## [0.3.0] - 2025-02-19
 
 ### Changed

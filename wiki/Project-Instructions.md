@@ -98,7 +98,7 @@ OpenOrca — a .NET 9 CLI AI orchestrator.
 ## Architecture
 - `src/OpenOrca.Cli` — Console app, REPL, streaming renderer
 - `src/OpenOrca.Core` — Domain logic (chat, config, sessions, permissions)
-- `src/OpenOrca.Tools` — 31 tool implementations
+- `src/OpenOrca.Tools` — 34 tool implementations
 
 ## Conventions
 - File-scoped namespaces
