@@ -1,3 +1,5 @@
+using System.Text;
+using RadLine;
 using Spectre.Console;
 
 namespace OpenOrca.Cli.Repl;
@@ -5,133 +7,208 @@ namespace OpenOrca.Cli.Repl;
 public sealed class InputHandler
 {
     private readonly ReplState _state;
+    private readonly TerminalPanel _panel;
+    private bool _modeCycled;
+    private string _savedInput = string.Empty;
 
-    public InputHandler(ReplState state)
+    public InputHandler(ReplState state, TerminalPanel panel)
     {
         _state = state;
+        _panel = panel;
     }
 
-    public string? ReadInput()
+    public async Task<string?> ReadInputAsync(CancellationToken ct)
     {
-        RenderPrompt();
-
         // Non-interactive fallback (piped input / CI)
-        if (Console.IsInputRedirected)
+        if (Console.IsInputRedirected || !LineEditor.IsSupported(AnsiConsole.Console))
+            return ReadNonInteractive();
+
+        var prompt = new ModePrompt(_state);
+        var inputSource = new InjectableInputSource();
+        var editor = new LineEditor(AnsiConsole.Console, inputSource)
         {
-            var line = Console.ReadLine();
-            if (line is null)
-                return null;
-
-            while (line.EndsWith('\\'))
+            Prompt = prompt,
+        };
+        editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Shift,
+            () => new CycleModeCommand(_state, text =>
             {
-                line = line[..^1] + "\n";
-                var next = Console.ReadLine();
-                if (next is null)
-                    break;
-                line += next;
-            }
-
-            return line.Trim();
-        }
-
-        // Interactive key-by-key loop
-        var buffer = new System.Text.StringBuilder();
+                _modeCycled = true;
+                _savedInput = text;
+            }));
 
         while (true)
         {
-            var key = Console.ReadKey(intercept: true);
+            _modeCycled = false;
+            prompt.Continuation = false;
 
-            // Shift+Tab → cycle mode
-            if (key.Key == ConsoleKey.Tab && key.Modifiers.HasFlag(ConsoleModifiers.Shift))
+            if (_savedInput.Length > 0)
             {
-                _state.CycleMode();
-                ClearCurrentLine(buffer.Length);
-                buffer.Clear();
-                RenderPrompt();
-                continue;
+                inputSource.Inject(_savedInput);
+                _savedInput = string.Empty;
             }
 
-            // Tab → insert spaces (don't let raw tab through)
-            if (key.Key == ConsoleKey.Tab)
+            _panel.EnterInput();
+
+            string? result;
+            try
             {
-                buffer.Append("    ");
-                Console.Write("    ");
-                continue;
+                result = await editor.ReadLine(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                _panel.ExitInput();
+                return null;
             }
 
-            // Enter → submit
-            if (key.Key == ConsoleKey.Enter)
+            _panel.ExitInput();
+
+            if (result is null)
             {
-                // Check for multi-line continuation (trailing backslash)
-                if (buffer.Length > 0 && buffer[^1] == '\\')
+                if (_modeCycled)
                 {
-                    buffer.Remove(buffer.Length - 1, 1);
-                    buffer.Append('\n');
-                    Console.WriteLine();
-                    AnsiConsole.Markup("[blue]  [/] ");
+                    _panel.Redraw();
                     continue;
                 }
-
-                Console.WriteLine();
-                return buffer.ToString().Trim();
+                return null; // Ctrl+C / EOF
             }
 
-            // Backspace → remove last char
-            if (key.Key == ConsoleKey.Backspace)
+            var trimmed = result.Trim();
+
+            // Backslash continuation
+            if (!trimmed.EndsWith('\\'))
             {
-                if (buffer.Length > 0)
+                return trimmed;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append(trimmed[..^1]);
+            sb.Append('\n');
+
+            prompt.Continuation = true;
+            while (true)
+            {
+                string? next;
+                try
                 {
-                    buffer.Remove(buffer.Length - 1, 1);
-                    // Move cursor back, overwrite with space, move back again
-                    Console.Write("\b \b");
+                    next = await editor.ReadLine(ct);
                 }
-                continue;
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (next is null)
+                    break;
+
+                if (next.TrimEnd().EndsWith('\\'))
+                {
+                    sb.Append(next.TrimEnd()[..^1]);
+                    sb.Append('\n');
+                }
+                else
+                {
+                    sb.Append(next);
+                    break;
+                }
             }
 
-            // Escape → clear buffer
-            if (key.Key == ConsoleKey.Escape)
-            {
-                ClearCurrentLine(buffer.Length);
-                buffer.Clear();
-                RenderPrompt();
-                continue;
-            }
-
-            // Ignore other control keys (arrows, F-keys, etc.)
-            if (key.KeyChar == '\0')
-                continue;
-
-            // Regular character → append and echo
-            buffer.Append(key.KeyChar);
-            Console.Write(key.KeyChar);
+            var final = sb.ToString().Trim();
+            return final;
         }
     }
 
-    private void RenderPrompt()
+    private static string? ReadNonInteractive()
     {
-        switch (_state.Mode)
+        var line = Console.ReadLine();
+        if (line is null)
+            return null;
+
+        while (line.EndsWith('\\'))
         {
-            case InputMode.Plan:
-                AnsiConsole.Markup("[cyan][[plan]][/] [blue bold]❯[/] ");
+            line = line[..^1] + "\n";
+            var next = Console.ReadLine();
+            if (next is null)
                 break;
-            case InputMode.Ask:
-                AnsiConsole.Markup("[magenta][[ask]][/] [blue bold]❯[/] ");
-                break;
-            default:
-                AnsiConsole.Markup("[blue bold]❯[/] ");
-                break;
+            line += next;
         }
+
+        return line.Trim();
+    }
+}
+
+/// <summary>
+/// Dynamic prompt that renders the current input mode indicator.
+/// </summary>
+internal sealed class ModePrompt : ILineEditorPrompt
+{
+    private readonly ReplState _state;
+
+    /// <summary>
+    /// When true, renders a continuation-line prompt instead of the mode prompt.
+    /// </summary>
+    public bool Continuation { get; set; }
+
+    public ModePrompt(ReplState state) => _state = state;
+
+    public (Markup Markup, int Margin) GetPrompt(ILineEditorState state, int line)
+    {
+        if (Continuation || line > 0)
+            return (new Markup("[blue]  [/]"), 1);
+
+        return _state.Mode switch
+        {
+            InputMode.Plan => (new Markup("[cyan][[plan]][/] [blue bold]❯[/]"), 1),
+            InputMode.Ask => (new Markup("[magenta][[ask]][/] [blue bold]❯[/]"), 1),
+            _ => (new Markup("[blue bold]❯[/]"), 1),
+        };
+    }
+}
+
+/// <summary>
+/// Shift+Tab command: cycle input mode, preserve the current buffer text,
+/// and cancel ReadLine so the editor re-enters with the updated prompt.
+/// </summary>
+internal sealed class CycleModeCommand : LineEditorCommand
+{
+    private readonly ReplState _state;
+    private readonly Action<string> _onCycled;
+
+    public CycleModeCommand(ReplState state, Action<string> onCycled)
+    {
+        _state = state;
+        _onCycled = onCycled;
     }
 
-    private static void ClearCurrentLine(int bufferLength)
+    public override void Execute(LineEditorContext context)
     {
-        // Move to start of line and clear it
-        var currentLeft = Console.CursorLeft;
-        if (currentLeft > 0)
-        {
-            Console.SetCursorPosition(0, Console.CursorTop);
-            Console.Write(new string(' ', currentLeft));
-            Console.SetCursorPosition(0, Console.CursorTop);
-        }
+        _state.CycleMode();
+        _onCycled(context.Buffer.Content);
+        context.Submit(SubmitAction.Cancel);
+    }
+}
+
+/// <summary>
+/// Input source that wraps console input but allows injecting keystrokes
+/// (used to restore text after a mode cycle).
+/// </summary>
+internal sealed class InjectableInputSource : IInputSource
+{
+    private readonly Queue<ConsoleKeyInfo> _queue = new();
+
+    public bool ByPassProcessing => false;
+
+    public void Inject(string text)
+    {
+        foreach (var ch in text)
+            _queue.Enqueue(new ConsoleKeyInfo(ch, 0, false, false, false));
+    }
+
+    public bool IsKeyAvailable() => _queue.Count > 0 || Console.KeyAvailable;
+
+    public ConsoleKeyInfo ReadKey()
+    {
+        if (_queue.TryDequeue(out var key))
+            return key;
+        return Console.ReadKey(intercept: true);
     }
 }

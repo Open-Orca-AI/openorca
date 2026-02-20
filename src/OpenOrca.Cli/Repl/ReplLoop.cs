@@ -18,6 +18,7 @@ public sealed class ReplLoop
     private readonly CommandParser _commandParser;
     private readonly SessionManager _sessionManager;
     private readonly ToolCallRenderer _toolCallRenderer;
+    private readonly TerminalPanel _panel;
     private readonly ILogger<ReplLoop> _logger;
 
     private readonly ReplState _state;
@@ -38,6 +39,7 @@ public sealed class ReplLoop
         ToolCallRenderer toolCallRenderer,
         SessionManager sessionManager,
         ToolRegistry toolRegistry,
+        TerminalPanel panel,
         ReplState state,
         ILogger<ReplLoop> logger)
     {
@@ -47,6 +49,7 @@ public sealed class ReplLoop
         _commandParser = commandParser;
         _sessionManager = sessionManager;
         _toolCallRenderer = toolCallRenderer;
+        _panel = panel;
         _state = state;
         _logger = logger;
 
@@ -57,7 +60,7 @@ public sealed class ReplLoop
 
         _commandHandler = new CommandHandler(
             chatClient, config, configManager, sessionManager, toolCallRenderer,
-            conversationManager, _systemPromptBuilder, configEditor, _state, logger);
+            conversationManager, _systemPromptBuilder, configEditor, panel, _state, logger);
 
         _agentLoopRunner = new AgentLoopRunner(
             chatClient, config, streamingRenderer, toolCallParser,
@@ -155,6 +158,8 @@ public sealed class ReplLoop
 
     public async Task RunAsync(CancellationToken ct)
     {
+        AnsiConsole.Clear();
+        _panel.Setup();
         await _commandHandler.ShowWelcomeBannerAsync(ct);
 
         var conversation = _conversationManager.Active;
@@ -162,7 +167,7 @@ public sealed class ReplLoop
 
         while (!ct.IsCancellationRequested)
         {
-            var input = _inputHandler.ReadInput();
+            var input = await _inputHandler.ReadInputAsync(ct);
 
             if (input is null)
                 break;
