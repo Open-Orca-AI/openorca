@@ -79,6 +79,6 @@ openorca --demo
 ## Next Steps
 
 - [Model Setup](Model-Setup) — configure your model for optimal tool calling
-- [Tool Reference](Tool-Reference) — see all 31 available tools
+- [Tool Reference](Tool-Reference) — see all 34 available tools
 - [Configuration](Configuration) — customize permissions, context window, and more
 - [Project Instructions](Project-Instructions) — teach OpenOrca about your project with ORCA.md

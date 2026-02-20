@@ -13,6 +13,7 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
     "temperature": 0.7,
     "maxTokens": null,
     "timeoutSeconds": 120,
+    "streamingTimeoutSeconds": 120,
     "nativeToolCalling": false,
     "promptProfile": null
   },
@@ -27,11 +28,16 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
     "contextWindowSize": 8192,
     "autoCompactThreshold": 0.8,
     "compactPreserveLastN": 4,
-    "autoCompactEnabled": true
+    "autoCompactEnabled": true,
+    "charsPerToken": 3.5
   },
   "session": {
     "autoSave": true,
     "maxSessions": 100
+  },
+  "agent": {
+    "maxIterations": 15,
+    "timeoutSeconds": 300
   },
   "hooks": {
     "preToolHooks": {},
@@ -52,6 +58,7 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
 | `temperature` | float | `0.7` | Sampling temperature. Lower = more focused, higher = more creative. `0.7` is a good default for coding tasks. |
 | `maxTokens` | int? | `null` | Max tokens per response. `null` lets the server decide. Set this if responses are being cut off. |
 | `timeoutSeconds` | int | `120` | HTTP request timeout. Increase for slower hardware or larger models. |
+| `streamingTimeoutSeconds` | int | `120` | Idle timeout per streaming response. Resets on each token received. Increase for models that pause during generation. |
 | `nativeToolCalling` | bool | `false` | Send tool definitions via OpenAI function calling protocol. Set to `true` for models that support it (e.g., Mistral). See [Model Setup](Model-Setup). |
 | `promptProfile` | string? | `null` | Override which prompt template to use. See [Model Setup](Model-Setup#prompt-profiles). |
 
@@ -112,6 +119,7 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
 | `autoCompactThreshold` | float | `0.8` | Trigger auto-compaction when context usage exceeds this percentage (0.0–1.0). At 0.8, compaction triggers at 80% usage. |
 | `compactPreserveLastN` | int | `4` | Number of recent conversation turns to keep when compacting. These are never summarized. |
 | `autoCompactEnabled` | bool | `true` | Enable automatic context compaction. If `false`, you must manually use `/compact`. |
+| `charsPerToken` | float | `3.5` | Characters-per-token ratio for context usage estimation. Adjust if your model's tokenizer differs significantly. |
 
 **Tip:** Set `contextWindowSize` to match your model's actual context window (check LM Studio model card). If set too high, the model may receive truncated context without warning. If set too low, compaction triggers too often.
 
@@ -121,6 +129,13 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
 |---------|------|---------|-------------|
 | `autoSave` | bool | `true` | Automatically save the conversation when exiting. |
 | `maxSessions` | int | `100` | Maximum number of saved sessions. Oldest sessions are pruned when this limit is exceeded. |
+
+## Agent Settings (`agent`)
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `maxIterations` | int | `15` | Maximum iterations for sub-agent loops spawned via `spawn_agent`. |
+| `timeoutSeconds` | int | `300` | Timeout in seconds for sub-agent tasks. |
 
 ## Hook Settings (`hooks`)
 

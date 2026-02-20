@@ -1,6 +1,6 @@
 # Tool Reference
 
-OpenOrca includes 31 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
+OpenOrca includes 34 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
 
 ## Permission Levels
 
@@ -298,7 +298,38 @@ Run GitHub CLI (`gh`) commands. Requires `gh` to be installed and authenticated.
 
 ---
 
-## Utility & Interactive (4 tools)
+## Network (1 tool)
+
+### `network_diagnostics`
+**Risk:** ReadOnly
+
+Network diagnostics: ping a host, perform DNS lookup, or check HTTP connectivity. Useful for debugging connection issues.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | `ping`, `dns_lookup`, or `check_connection` |
+| `target` | string | Yes | Hostname, domain, or URL to test |
+| `timeout_seconds` | integer | No | Timeout in seconds (default: 5) |
+
+---
+
+## Archive (1 tool)
+
+### `archive`
+**Risk:** Moderate
+
+Create, extract, or list contents of zip archives.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | `create`, `extract`, or `list` |
+| `archive_path` | string | Yes | Path to the zip archive file |
+| `source_path` | string | No | Path to compress (file or directory). Required for `create`. |
+| `output_path` | string | No | Directory to extract to. Required for `extract`. |
+
+---
+
+## Utility & Interactive (5 tools)
 
 ### `think`
 **Risk:** ReadOnly
@@ -318,6 +349,17 @@ Track progress on multi-step tasks. The model uses this to maintain a checklist 
 |-----------|------|----------|-------------|
 | `action` | string | Yes | `add`, `complete`, `list`, or `clear` |
 | `task` | string | No | Task description (for `add`/`complete`) |
+
+### `env`
+**Risk:** ReadOnly
+
+Inspect environment variables. Use action `get` to retrieve a specific variable, or `list` to list all (optionally filtered by prefix).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | `get` or `list` |
+| `name` | string | No | Variable name (required for `get`) |
+| `prefix` | string | No | Filter variables by prefix (optional for `list`) |
 
 ### `ask_user`
 **Risk:** ReadOnly

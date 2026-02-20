@@ -32,10 +32,11 @@ dotnet run --project src/OpenOrca.Cli
 src/
   OpenOrca.Cli/       # Console application, REPL loop, rendering
   OpenOrca.Core/      # Domain logic (chat, config, sessions, permissions)
-  OpenOrca.Tools/     # Tool implementations (31 tools)
+  OpenOrca.Tools/     # Tool implementations (34 tools)
 tests/
-  OpenOrca.Core.Tests/   # Unit tests for Core (49 tests)
-  OpenOrca.Tools.Tests/  # Unit tests for Tools (65 tests)
+  OpenOrca.Cli.Tests/    # CLI and REPL unit tests
+  OpenOrca.Core.Tests/   # Core domain unit tests
+  OpenOrca.Tools.Tests/  # Tool unit tests
   OpenOrca.Harness/      # Integration tests (requires running LM Studio)
 ```
 
@@ -93,7 +94,7 @@ The harness runs 7 tests:
 4. Native tool calling
 5. Text-based tool calling
 6. Nudge mechanism
-7. Realistic scenario (full system prompt + all 31 tools + real user prompt)
+7. Realistic scenario (full system prompt + all 34 tools + real user prompt)
 
 These tests are **not** run in CI (they require a local LLM server).
 
