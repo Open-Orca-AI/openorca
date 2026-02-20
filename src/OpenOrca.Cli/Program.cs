@@ -87,6 +87,9 @@ builder.Services.AddSingleton<PromptManager>();
 builder.Services.AddSingleton(config.Hooks);
 builder.Services.AddSingleton<HookRunner>();
 
+// Register shared REPL state (injected into InputHandler + ReplLoop)
+builder.Services.AddSingleton<ReplState>();
+
 // Register CLI services
 builder.Services.AddSingleton<InputHandler>();
 builder.Services.AddSingleton<CommandParser>();

@@ -95,4 +95,69 @@ public class ReplStateTests
         var state = new ReplState();
         Assert.Null(state.CurrentSessionId);
     }
+
+    [Fact]
+    public void DefaultState_ModeIsNormal()
+    {
+        var state = new ReplState();
+        Assert.Equal(InputMode.Normal, state.Mode);
+    }
+
+    [Fact]
+    public void CycleMode_NormalToPlanToAskToNormal()
+    {
+        var state = new ReplState();
+        Assert.Equal(InputMode.Normal, state.Mode);
+
+        state.CycleMode();
+        Assert.Equal(InputMode.Plan, state.Mode);
+
+        state.CycleMode();
+        Assert.Equal(InputMode.Ask, state.Mode);
+
+        state.CycleMode();
+        Assert.Equal(InputMode.Normal, state.Mode);
+    }
+
+    [Fact]
+    public void PlanMode_SetTrue_SetsModeToplan()
+    {
+        var state = new ReplState();
+        state.PlanMode = true;
+        Assert.Equal(InputMode.Plan, state.Mode);
+        Assert.True(state.PlanMode);
+    }
+
+    [Fact]
+    public void PlanMode_SetFalse_SetsModeToNormal()
+    {
+        var state = new ReplState();
+        state.Mode = InputMode.Plan;
+        state.PlanMode = false;
+        Assert.Equal(InputMode.Normal, state.Mode);
+        Assert.False(state.PlanMode);
+    }
+
+    [Fact]
+    public void PlanMode_IsFalseInAskMode()
+    {
+        var state = new ReplState();
+        state.Mode = InputMode.Ask;
+        Assert.False(state.PlanMode);
+    }
+
+    [Fact]
+    public void Mode_SetDirectly_ReflectsInPlanMode()
+    {
+        var state = new ReplState();
+
+        state.Mode = InputMode.Plan;
+        Assert.True(state.PlanMode);
+
+        state.Mode = InputMode.Ask;
+        Assert.False(state.PlanMode);
+
+        state.Mode = InputMode.Normal;
+        Assert.False(state.PlanMode);
+    }
 }
