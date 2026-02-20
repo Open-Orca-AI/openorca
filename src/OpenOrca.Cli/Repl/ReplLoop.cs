@@ -20,7 +20,7 @@ public sealed class ReplLoop
     private readonly ToolCallRenderer _toolCallRenderer;
     private readonly ILogger<ReplLoop> _logger;
 
-    private readonly ReplState _state = new();
+    private readonly ReplState _state;
     private readonly SystemPromptBuilder _systemPromptBuilder;
     private readonly CommandHandler _commandHandler;
     private readonly ToolCallExecutor _toolCallExecutor;
@@ -38,6 +38,7 @@ public sealed class ReplLoop
         ToolCallRenderer toolCallRenderer,
         SessionManager sessionManager,
         ToolRegistry toolRegistry,
+        ReplState state,
         ILogger<ReplLoop> logger)
     {
         _conversationManager = conversationManager;
@@ -46,6 +47,7 @@ public sealed class ReplLoop
         _commandParser = commandParser;
         _sessionManager = sessionManager;
         _toolCallRenderer = toolCallRenderer;
+        _state = state;
         _logger = logger;
 
         _systemPromptBuilder = new SystemPromptBuilder(config, promptManager);
@@ -116,6 +118,41 @@ public sealed class ReplLoop
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
     }
 
+    /// <summary>
+    /// Run a single turn without tools (used by /ask and persistent Ask mode).
+    /// </summary>
+    private async Task RunNoToolsTurnAsync(Conversation conversation, string userMessage, CancellationToken ct)
+    {
+        conversation.AddUserMessage(userMessage);
+
+        var savedTools = _toolCallExecutor.Tools;
+        try
+        {
+            _toolCallExecutor.Tools = [];
+            var turnStopwatch = Stopwatch.StartNew();
+            await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
+            turnStopwatch.Stop();
+            _state.TotalTurns++;
+            AnsiConsole.Markup($"[dim][[{turnStopwatch.Elapsed.TotalSeconds:F1}s]][/]");
+        }
+        catch (OperationCanceledException)
+        {
+            AnsiConsole.MarkupLine("\n[yellow]Cancelled.[/]");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in no-tools agent loop");
+            AnsiConsole.MarkupLine($"\n[red]Error: {Markup.Escape(ex.Message)}[/]");
+            AgentLoopRunner.ShowLogHint();
+        }
+        finally
+        {
+            _toolCallExecutor.Tools = savedTools;
+        }
+
+        AnsiConsole.WriteLine();
+    }
+
     public async Task RunAsync(CancellationToken ct)
     {
         await _commandHandler.ShowWelcomeBannerAsync(ct);
@@ -125,10 +162,6 @@ public sealed class ReplLoop
 
         while (!ct.IsCancellationRequested)
         {
-            // Show plan mode indicator in prompt
-            if (_state.PlanMode)
-                AnsiConsole.Markup("[cyan][plan][/] ");
-
             var input = _inputHandler.ReadInput();
 
             if (input is null)
@@ -148,39 +181,23 @@ public sealed class ReplLoop
             var command = _commandParser.TryParse(input);
             if (command is not null)
             {
-                // /ask — chat without tools
-                if (command.Command == SlashCommand.Ask)
+                // /ask with args — one-shot chat without tools
+                if (command.Command == SlashCommand.Ask && command.Args.Length > 0)
                 {
-                    if (command.Args.Length == 0)
-                    {
-                        AnsiConsole.MarkupLine("[yellow]Usage: /ask <question>[/]");
-                        continue;
-                    }
-
                     var question = string.Join(" ", command.Args);
-                    conversation.AddUserMessage(question);
-
-                    var savedTools = _toolCallExecutor.Tools;
-                    try
-                    {
-                        _toolCallExecutor.Tools = [];
-                        var turnStopwatch = Stopwatch.StartNew();
-                        await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
-                        turnStopwatch.Stop();
-                        _state.TotalTurns++;
-                        AnsiConsole.Markup($"[dim][[{turnStopwatch.Elapsed.TotalSeconds:F1}s]][/]");
-                    }
-                    finally
-                    {
-                        _toolCallExecutor.Tools = savedTools;
-                    }
-
-                    AnsiConsole.WriteLine();
+                    await RunNoToolsTurnAsync(conversation, question, ct);
                     continue;
                 }
 
                 if (await _commandHandler.HandleCommandAsync(command, conversation, ct))
                     break;
+                continue;
+            }
+
+            // Persistent Ask mode — run without tools
+            if (_state.Mode == InputMode.Ask)
+            {
+                await RunNoToolsTurnAsync(conversation, input, ct);
                 continue;
             }
 

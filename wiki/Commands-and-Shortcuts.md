@@ -169,13 +169,16 @@ Add file contents to the conversation context so the LLM can reference them. Sup
 
 Each file is injected as a user message with a path header. Files are truncated at 50K characters.
 
-### `/ask <question>`
+### `/ask [question]`
 
-Ask the LLM a question without tool use. The agent loop runs with an empty tools list, so the model responds with pure text — no tool calls, faster and cheaper.
+Without arguments, toggles **Ask mode** — a persistent mode where all input is sent to the LLM without tools. The prompt shows `[ask] ❯` when active. Toggle off by running `/ask` again or pressing Shift+Tab.
+
+With arguments, performs a **one-shot ask** — sends the question without tools and returns to the current mode.
 
 ```
-> /ask what is the difference between Task and ValueTask in C#?
-> /ask explain the strategy pattern with an example
+> /ask                                                    # Toggle ask mode on/off
+> /ask what is the difference between Task and ValueTask in C#?  # One-shot ask
+> /ask explain the strategy pattern with an example              # One-shot ask
 ```
 
 ### `/exit`, `/quit`, `/q`
@@ -200,9 +203,25 @@ On Windows, commands run via `cmd.exe /c`. On Linux/macOS, via `/bin/bash -c`.
 
 | Shortcut | Action |
 |----------|--------|
+| `Shift+Tab` | Cycle input mode: **Normal** → **Plan** → **Ask** → **Normal**. The prompt indicator updates immediately (`❯`, `[plan] ❯`, `[ask] ❯`). |
 | `Ctrl+O` | Toggle thinking visibility. When hidden, you see a token counter. When visible, you see the full streaming output in cyan. Can be toggled mid-generation. |
 | `Ctrl+C` | **First press:** Cancel the current generation. **Second press within 2 seconds:** Exit the application. |
+| `Escape` | Clear the current input line. |
+
+## Input Modes
+
+OpenOrca has three input modes, cycled with **Shift+Tab**:
+
+| Mode | Prompt | Behavior |
+|------|--------|----------|
+| **Normal** | `❯` | Full agent loop with all tools available |
+| **Plan** | `[plan] ❯` | Model plans without executing, then asks for approval |
+| **Ask** | `[ask] ❯` | Chat without tools — faster, cheaper responses |
+
+You can also switch modes with commands:
+- `/plan` or `/plan on|off` — toggle or set Plan mode
+- `/ask` (no args) — toggle Ask mode
 
 ## Multi-Line Input
 
-Type your message at the `>` prompt. Currently, input is single-line — press Enter to send. For multi-line content, use the tools (e.g., ask OpenOrca to create a file with specific content).
+End a line with `\` to continue on the next line. In non-interactive mode (piped input), `Console.ReadLine()` is used as a fallback.

@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/undo` command** — revert or stash uncommitted changes with an interactive prompt (revert all / stash / cancel)
 - **`/rename <name>` command** — rename the current session
 - **`/add <file> [...]` command** — add file contents to conversation context (supports glob patterns)
-- **`/ask <question>` command** — chat with the LLM without tool use (faster, cheaper responses)
+- **`/ask [question]` command** — toggle persistent Ask mode (no args) or one-shot ask (with args)
+- **Shift+Tab mode cycling** — cycle input mode at the prompt: Normal → Plan → Ask → Normal, with visual indicator (`❯`, `[plan] ❯`, `[ask] ❯`)
+- **Interactive key-by-key input** — InputHandler rewritten with `Console.ReadKey` loop supporting Shift+Tab, Escape to clear, and non-interactive fallback for piped input
 
 ## [0.3.3] - 2025-02-20
 

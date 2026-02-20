@@ -146,6 +146,10 @@ internal sealed class CommandHandler
                 HandleAdd(command.Args, conversation);
                 return false;
 
+            case SlashCommand.Ask:
+                HandleAskToggle();
+                return false;
+
             default:
                 AnsiConsole.MarkupLine("[yellow]Unknown command. Type /help for available commands.[/]");
                 return false;
@@ -510,6 +514,19 @@ internal sealed class CommandHandler
                 AnsiConsole.MarkupLine("[yellow]Usage: /session list|save [name]|load <id>|delete <id>[/]");
                 break;
         }
+    }
+
+    private void HandleAskToggle()
+    {
+        _state.Mode = _state.Mode == InputMode.Ask ? InputMode.Normal : InputMode.Ask;
+        var enabled = _state.Mode == InputMode.Ask;
+
+        if (enabled)
+            AnsiConsole.MarkupLine("[magenta]Ask mode enabled[/] — responses will not use tools.");
+        else
+            AnsiConsole.MarkupLine("[grey]Ask mode disabled[/] — back to normal mode.");
+
+        _logger.LogInformation("Ask mode toggled: {Enabled}", enabled);
     }
 
     private async Task HandlePlanCommandAsync(string[] args, Conversation conversation)
@@ -1190,14 +1207,15 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/undo"), "Revert or stash uncommitted changes");
         table.AddRow(Markup.Escape("/rename <name>"), "Rename current session");
         table.AddRow(Markup.Escape("/add <file> [...]"), "Add file contents to conversation context");
-        table.AddRow(Markup.Escape("/ask <question>"), "Ask a question without tool use");
+        table.AddRow(Markup.Escape("/ask [question]"), "Toggle ask mode (no args) or one-shot ask (with args)");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 
         AnsiConsole.Write(table);
 
-        AnsiConsole.MarkupLine($"[grey]  Ctrl+O  Toggle thinking output (currently {(_state.ShowThinking ? "[green]visible[/]" : "[yellow]hidden[/]")})[/]");
-        AnsiConsole.MarkupLine($"[grey]  Plan    {(_state.PlanMode ? "[cyan]active[/]" : "[grey]off[/]")} — use /plan to toggle[/]");
+        AnsiConsole.MarkupLine($"[grey]  Shift+Tab  Cycle input mode (Normal → Plan → Ask → Normal)[/]");
+        AnsiConsole.MarkupLine($"[grey]  Ctrl+O     Toggle thinking output (currently {(_state.ShowThinking ? "[green]visible[/]" : "[yellow]hidden[/]")})[/]");
+        AnsiConsole.MarkupLine($"[grey]  Mode       {(_state.Mode switch { InputMode.Plan => "[cyan]Plan[/]", InputMode.Ask => "[magenta]Ask[/]", _ => "[grey]Normal[/]" })}[/]");
         AnsiConsole.MarkupLine("[grey]  Tip: End a line with \\ to continue input on the next line[/]");
     }
 

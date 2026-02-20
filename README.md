@@ -274,7 +274,7 @@ OpenOrca.sln
 | `/undo` | Revert or stash uncommitted changes |
 | `/rename <name>` | Rename current session |
 | `/add <file> [...]` | Add file contents to conversation context |
-| `/ask <question>` | Chat without tool use (faster, cheaper) |
+| `/ask [question]` | Toggle ask mode (no args) or one-shot ask (with args) |
 | `!<command>` | Run shell command directly |
 | `/exit`, `/quit`, `/q` | Exit |
 
@@ -282,6 +282,7 @@ OpenOrca.sln
 
 | Shortcut | Action |
 |----------|--------|
+| `Shift+Tab` | Cycle input mode: Normal → Plan → Ask → Normal |
 | `Ctrl+O` | Toggle thinking output visibility |
 | `Ctrl+C` | Cancel generation (first press) / Exit (second press within 2s) |
 
