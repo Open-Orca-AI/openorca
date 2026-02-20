@@ -25,7 +25,7 @@ jobs:
           # Install all three tools in parallel — each in its own subshell.
           # VHS .deb and ttyd binary are direct downloads (no Charm apt repo).
           # ffmpeg needs apt-get update because runner package lists go stale.
-          (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg) &
+          (sudo apt-get update && sudo apt-get install -y ffmpeg) &
           (curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v0.10.0/vhs_0.10.0_amd64.deb" -o /tmp/vhs.deb && sudo dpkg --force-depends -i /tmp/vhs.deb) &
           (curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" -o /tmp/ttyd && chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/) &
           wait
