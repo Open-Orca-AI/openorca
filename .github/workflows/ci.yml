@@ -11,7 +11,37 @@ permissions:
   pull-requests: read
 
 jobs:
-  build-and-test:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Publish
+        run: >-
+          dotnet publish src/OpenOrca.Cli
+          -c Release
+          -r linux-x64
+          --self-contained
+          -p:PublishSingleFile=true
+          -o publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openorca-linux-x64
+          path: publish/
+          retention-days: 14
+
+  test:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -46,7 +76,7 @@ jobs:
           retention-days: 14
 
   record-demo:
-    needs: build-and-test
+    needs: [build, test]
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'push' ||
@@ -64,10 +94,16 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
         with:
-          dotnet-version: 9.0.x
+          name: openorca-linux-x64
+          path: publish
+
+      - name: Add binary to PATH
+        run: |
+          chmod +x publish/openorca
+          echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
 
       - name: Install VHS, ttyd, and ffmpeg
         run: |
@@ -80,12 +116,6 @@ jobs:
           curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${VHS_TTYD_VERSION}/ttyd.x86_64" -o /tmp/ttyd
           chmod +x /tmp/ttyd
           sudo mv /tmp/ttyd /usr/local/bin/ttyd
-
-      - name: Publish OpenOrca
-        run: |
-          dotnet publish src/OpenOrca.Cli -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish
-          chmod +x publish/openorca
-          echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
 
       - name: Record demo GIF
         run: vhs demo/demo.tape
