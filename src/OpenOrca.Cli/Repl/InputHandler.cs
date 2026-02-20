@@ -32,6 +32,10 @@ public sealed class InputHandler
                     _modeCycled = true;
                     _savedInput = text;
                 }));
+
+            // Bind plain Up/Down to history (RadLine defaults to Ctrl+Up/Ctrl+Down)
+            _editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            _editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
         }
     }
 
@@ -84,6 +88,8 @@ public sealed class InputHandler
             // Backslash continuation
             if (!trimmed.EndsWith('\\'))
             {
+                if (trimmed.Length > 0)
+                    _editor.History.Add(trimmed);
                 return trimmed;
             }
 
@@ -120,6 +126,8 @@ public sealed class InputHandler
             }
 
             var final = sb.ToString().Trim();
+            if (final.Length > 0)
+                _editor.History.Add(final);
             return final;
         }
     }
