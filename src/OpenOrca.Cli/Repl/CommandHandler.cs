@@ -126,6 +126,26 @@ internal sealed class CommandHandler
                 HandleExport(command.Args, conversation);
                 return false;
 
+            case SlashCommand.Init:
+                await HandleInitAsync();
+                return false;
+
+            case SlashCommand.Diff:
+                await HandleDiffAsync(ct);
+                return false;
+
+            case SlashCommand.Undo:
+                await HandleUndoAsync(ct);
+                return false;
+
+            case SlashCommand.Rename:
+                await HandleRenameAsync(command.Args, conversation);
+                return false;
+
+            case SlashCommand.Add:
+                HandleAdd(command.Args, conversation);
+                return false;
+
             default:
                 AnsiConsole.MarkupLine("[yellow]Unknown command. Type /help for available commands.[/]");
                 return false;
@@ -912,6 +932,237 @@ internal sealed class CommandHandler
         }
     }
 
+    private async Task HandleInitAsync()
+    {
+        var loader = new ProjectInstructionsLoader();
+        var cwd = Directory.GetCurrentDirectory();
+        var root = loader.FindProjectRoot(cwd) ?? cwd;
+        var orcaDir = Path.Combine(root, ".orca");
+        var orcaPath = Path.Combine(orcaDir, "ORCA.md");
+
+        // Check if instructions already exist
+        var existing = loader.GetInstructionsPath(cwd);
+        if (existing is not null && File.Exists(existing))
+        {
+            AnsiConsole.MarkupLine($"[yellow]Project instructions already exist at: {Markup.Escape(existing)}[/]");
+            AnsiConsole.MarkupLine("[grey]Use /memory edit to modify them.[/]");
+            return;
+        }
+
+        Directory.CreateDirectory(orcaDir);
+        await File.WriteAllTextAsync(orcaPath, """
+            # Project Instructions
+
+            ## Overview
+            <!-- Brief description of the project -->
+
+            ## Architecture
+            <!-- Key directories, patterns, frameworks -->
+
+            ## Code Style
+            <!-- Naming conventions, formatting, preferred patterns -->
+
+            ## Testing
+            <!-- How to run tests, testing conventions -->
+
+            ## Common Commands
+            <!-- Build, test, deploy commands -->
+            """.Replace("            ", ""));
+
+        AnsiConsole.MarkupLine($"[green]Created project instructions at: {Markup.Escape(orcaPath)}[/]");
+        AnsiConsole.MarkupLine("[grey]Edit with /memory edit or open the file directly.[/]");
+    }
+
+    private async Task HandleDiffAsync(CancellationToken ct)
+    {
+        try
+        {
+            var staged = await RunGitCommandAsync("git diff --cached", ct);
+            var stagedStat = await RunGitCommandAsync("git diff --cached --stat", ct);
+            var unstaged = await RunGitCommandAsync("git diff", ct);
+            var unstagedStat = await RunGitCommandAsync("git diff --stat", ct);
+
+            if (string.IsNullOrWhiteSpace(staged) && string.IsNullOrWhiteSpace(unstaged))
+            {
+                AnsiConsole.MarkupLine("[grey]No uncommitted changes.[/]");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(staged))
+            {
+                var display = stagedStat + "\n\n" + staged;
+                if (display.Length > CliConstants.BashOutputMaxChars)
+                    display = display[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
+                AnsiConsole.Write(new Panel(Markup.Escape(display.TrimEnd()))
+                    .Header("[green]Staged Changes[/]")
+                    .Border(BoxBorder.Rounded)
+                    .BorderColor(Color.Green));
+            }
+
+            if (!string.IsNullOrWhiteSpace(unstaged))
+            {
+                var display = unstagedStat + "\n\n" + unstaged;
+                if (display.Length > CliConstants.BashOutputMaxChars)
+                    display = display[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
+                AnsiConsole.Write(new Panel(Markup.Escape(display.TrimEnd()))
+                    .Header("[yellow]Unstaged Changes[/]")
+                    .Border(BoxBorder.Rounded)
+                    .BorderColor(Color.Yellow));
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Failed to get diff: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
+    private async Task HandleUndoAsync(CancellationToken ct)
+    {
+        try
+        {
+            var stat = await RunGitCommandAsync("git diff --stat", ct);
+            var stagedStat = await RunGitCommandAsync("git diff --cached --stat", ct);
+            var combined = (stagedStat + "\n" + stat).Trim();
+
+            if (string.IsNullOrWhiteSpace(combined))
+            {
+                AnsiConsole.MarkupLine("[grey]No changes to undo.[/]");
+                return;
+            }
+
+            AnsiConsole.Write(new Panel(Markup.Escape(combined))
+                .Header("[yellow]Changes to undo[/]")
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.Yellow));
+
+            var choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[yellow]How would you like to undo these changes?[/]")
+                    .AddChoices("Revert all (git checkout . && git reset HEAD)", "Stash changes (git stash)", "Cancel"));
+
+            switch (choice)
+            {
+                case "Revert all (git checkout . && git reset HEAD)":
+                    await RunGitCommandAsync("git reset HEAD", ct);
+                    await RunGitCommandAsync("git checkout .", ct);
+                    AnsiConsole.MarkupLine("[green]All changes reverted.[/]");
+                    break;
+                case "Stash changes (git stash)":
+                    var stashResult = await RunGitCommandAsync("git stash", ct);
+                    AnsiConsole.MarkupLine($"[green]{Markup.Escape(stashResult.Trim())}[/]");
+                    break;
+                default:
+                    AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Failed to undo: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
+    private async Task HandleRenameAsync(string[] args, Conversation conversation)
+    {
+        if (args.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]Usage: /rename <new name>[/]");
+            return;
+        }
+
+        if (_state.CurrentSessionId is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]No active session. Save first with /session save.[/]");
+            return;
+        }
+
+        var newTitle = string.Join(" ", args);
+        _state.CurrentSessionId = await _sessionManager.SaveAsync(conversation, newTitle, _state.CurrentSessionId);
+        AnsiConsole.MarkupLine($"[green]Session renamed to: {Markup.Escape(newTitle)}[/]");
+    }
+
+    private void HandleAdd(string[] args, Conversation conversation)
+    {
+        if (args.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]Usage: /add <file1> [file2] ...[/]");
+            return;
+        }
+
+        var addedFiles = new List<string>();
+        var contentParts = new List<string>();
+
+        foreach (var pattern in args)
+        {
+            IEnumerable<string> files;
+            if (pattern.Contains('*') || pattern.Contains('?'))
+            {
+                var dir = Path.GetDirectoryName(pattern);
+                var searchPattern = Path.GetFileName(pattern);
+                dir = string.IsNullOrEmpty(dir) ? Directory.GetCurrentDirectory() : Path.GetFullPath(dir);
+                files = Directory.Exists(dir)
+                    ? Directory.GetFiles(dir, searchPattern, SearchOption.TopDirectoryOnly)
+                    : [];
+            }
+            else
+            {
+                var fullPath = Path.GetFullPath(pattern);
+                files = File.Exists(fullPath) ? [fullPath] : [];
+            }
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var content = File.ReadAllText(file);
+                    const int maxChars = 50_000;
+                    if (content.Length > maxChars)
+                        content = content[..maxChars] + "\n... (truncated)";
+
+                    var relativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), file);
+                    contentParts.Add($"--- {relativePath} ---\n{content}");
+                    addedFiles.Add(relativePath);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]Failed to read {Markup.Escape(pattern)}: {Markup.Escape(ex.Message)}[/]");
+                }
+            }
+
+            if (!files.Any())
+                AnsiConsole.MarkupLine($"[yellow]No files matched: {Markup.Escape(pattern)}[/]");
+        }
+
+        if (contentParts.Count > 0)
+        {
+            var message = "Here are the contents of the requested files:\n\n" + string.Join("\n\n", contentParts);
+            conversation.AddUserMessage(message);
+            AnsiConsole.MarkupLine($"[green]Added {addedFiles.Count} file(s) to context: {Markup.Escape(string.Join(", ", addedFiles))}[/]");
+        }
+    }
+
+    private async Task<string> RunGitCommandAsync(string command, CancellationToken ct)
+    {
+        var shell = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/bash";
+        var shellArg = OperatingSystem.IsWindows() ? $"/c {command}" : $"-c \"{command}\"";
+
+        var psi = new ProcessStartInfo(shell, shellArg)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = Directory.GetCurrentDirectory()
+        };
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start git process.");
+
+        var stdout = await proc.StandardOutput.ReadToEndAsync(ct);
+        await proc.WaitForExitAsync(ct);
+        return stdout;
+    }
+
     private void ShowHelp()
     {
         var table = new Table()
@@ -934,6 +1185,12 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/doctor, /diag"), "Run diagnostic checks");
         table.AddRow(Markup.Escape("/copy, /cp"), "Copy last response to clipboard");
         table.AddRow(Markup.Escape("/export [path]"), "Export conversation to markdown");
+        table.AddRow(Markup.Escape("/init"), "Scaffold .orca/ORCA.md project instructions");
+        table.AddRow(Markup.Escape("/diff"), "Show uncommitted git changes");
+        table.AddRow(Markup.Escape("/undo"), "Revert or stash uncommitted changes");
+        table.AddRow(Markup.Escape("/rename <name>"), "Rename current session");
+        table.AddRow(Markup.Escape("/add <file> [...]"), "Add file contents to conversation context");
+        table.AddRow(Markup.Escape("/ask <question>"), "Ask a question without tool use");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 

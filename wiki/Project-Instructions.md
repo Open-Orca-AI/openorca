@@ -21,6 +21,18 @@ The project root is determined by walking up from the current working directory 
 
 ## Managing ORCA.md
 
+### Quick Setup with `/init`
+
+The fastest way to create project instructions:
+
+```
+> /init
+```
+
+This creates `.orca/ORCA.md` with a starter template containing sections for overview, architecture, code style, testing, and common commands. Fill in the sections relevant to your project.
+
+If an ORCA.md already exists, `/init` will tell you and suggest using `/memory edit` instead.
+
 ### View Current Instructions
 
 ```

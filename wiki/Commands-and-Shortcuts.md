@@ -124,6 +124,60 @@ Export the full conversation to a markdown file.
 
 The export includes system prompt (truncated), all messages by role, tool calls with arguments, and tool results.
 
+### `/init`
+
+Scaffold a new `.orca/ORCA.md` project instructions file with a starter template. Uses `ProjectInstructionsLoader.FindProjectRoot()` to locate the project root, then creates `.orca/ORCA.md` with sections for overview, architecture, code style, testing, and common commands.
+
+If an ORCA.md already exists, it tells you and suggests `/memory edit` instead.
+
+### `/diff`
+
+Show uncommitted git changes in formatted Spectre.Console panels:
+
+- **Staged changes** — shown in a green-bordered panel with stat summary + full diff
+- **Unstaged changes** — shown in a yellow-bordered panel with stat summary + full diff
+
+If there are no changes, prints "No uncommitted changes."
+
+### `/undo`
+
+Revert AI-made (or any uncommitted) changes with a confirmation step:
+
+1. Shows a panel with `git diff --stat` of all staged + unstaged changes
+2. Offers three choices via an interactive prompt:
+   - **Revert all** — runs `git reset HEAD` + `git checkout .`
+   - **Stash changes** — runs `git stash`
+   - **Cancel** — does nothing
+
+### `/rename <name>`
+
+Rename the current session. Requires an active session (save first with `/session save` if needed).
+
+```
+> /rename Refactoring auth module
+```
+
+### `/add <file1> [file2] ...`
+
+Add file contents to the conversation context so the LLM can reference them. Supports glob patterns.
+
+```
+> /add src/Program.cs                    # Add a single file
+> /add src/*.cs                          # Add all .cs files in src/
+> /add src/Models/User.cs tests/UserTests.cs  # Add multiple specific files
+```
+
+Each file is injected as a user message with a path header. Files are truncated at 50K characters.
+
+### `/ask <question>`
+
+Ask the LLM a question without tool use. The agent loop runs with an empty tools list, so the model responds with pure text — no tool calls, faster and cheaper.
+
+```
+> /ask what is the difference between Task and ValueTask in C#?
+> /ask explain the strategy pattern with an example
+```
+
 ### `/exit`, `/quit`, `/q`
 
 Exit OpenOrca.

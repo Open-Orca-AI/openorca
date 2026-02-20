@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`--continue` / `-c` CLI flag** — resume the most recent saved session on startup
+- **`--resume` / `-r <id>` CLI flag** — resume a specific session by ID on startup
+- **`--allow <tools>` CLI flag** — pre-approve tools (comma-separated) for non-interactive `--prompt` mode, enabling CI/CD pipelines
+- **`--output json` CLI flag** — output structured JSON (`{"response":"...","tokens":N}`) when combined with `--prompt`
+- **`/init` command** — scaffold `.orca/ORCA.md` project instructions with a starter template
+- **`/diff` command** — show staged and unstaged git changes in color-coded Spectre panels
+- **`/undo` command** — revert or stash uncommitted changes with an interactive prompt (revert all / stash / cancel)
+- **`/rename <name>` command** — rename the current session
+- **`/add <file> [...]` command** — add file contents to conversation context (supports glob patterns)
+- **`/ask <question>` command** — chat with the LLM without tool use (faster, cheaper responses)
+
 ## [0.3.3] - 2025-02-20
 
 ### Changed

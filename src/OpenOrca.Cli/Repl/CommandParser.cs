@@ -17,7 +17,13 @@ public enum SlashCommand
     Memory,
     Doctor,
     Copy,
-    Export
+    Export,
+    Init,
+    Diff,
+    Undo,
+    Rename,
+    Add,
+    Ask
 }
 
 public sealed record ParsedCommand(SlashCommand Command, string[] Args);
@@ -50,6 +56,12 @@ public sealed class CommandParser
             "/doctor" or "/diag" => new ParsedCommand(SlashCommand.Doctor, args),
             "/copy" or "/cp" => new ParsedCommand(SlashCommand.Copy, args),
             "/export" => new ParsedCommand(SlashCommand.Export, args),
+            "/init" => new ParsedCommand(SlashCommand.Init, args),
+            "/diff" => new ParsedCommand(SlashCommand.Diff, args),
+            "/undo" => new ParsedCommand(SlashCommand.Undo, args),
+            "/rename" => new ParsedCommand(SlashCommand.Rename, args),
+            "/add" => new ParsedCommand(SlashCommand.Add, args),
+            "/ask" => new ParsedCommand(SlashCommand.Ask, args),
             _ => null
         };
     }

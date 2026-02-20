@@ -37,6 +37,12 @@ public class CommandParserTests
     [InlineData("/copy", SlashCommand.Copy)]
     [InlineData("/cp", SlashCommand.Copy)]
     [InlineData("/export", SlashCommand.Export)]
+    [InlineData("/init", SlashCommand.Init)]
+    [InlineData("/diff", SlashCommand.Diff)]
+    [InlineData("/undo", SlashCommand.Undo)]
+    [InlineData("/rename", SlashCommand.Rename)]
+    [InlineData("/add", SlashCommand.Add)]
+    [InlineData("/ask", SlashCommand.Ask)]
     public void Parse_ValidCommand_ReturnsCorrectSlashCommand(string input, SlashCommand expected)
     {
         var result = _parser.TryParse(input);
@@ -171,5 +177,35 @@ public class CommandParserTests
         Assert.NotNull(result);
         Assert.Equal(SlashCommand.Compact, result.Command);
         Assert.Equal(["focus", "on", "code", "changes"], result.Args);
+    }
+
+    [Fact]
+    public void Parse_RenameWithName_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/rename My Cool Session");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Rename, result.Command);
+        Assert.Equal(["My", "Cool", "Session"], result.Args);
+    }
+
+    [Fact]
+    public void Parse_AddWithFiles_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/add src/Program.cs tests/*.cs");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Add, result.Command);
+        Assert.Equal(["src/Program.cs", "tests/*.cs"], result.Args);
+    }
+
+    [Fact]
+    public void Parse_AskWithQuestion_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/ask what is a monad");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Ask, result.Command);
+        Assert.Equal(["what", "is", "a", "monad"], result.Args);
     }
 }

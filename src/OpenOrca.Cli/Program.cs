@@ -50,6 +50,26 @@ if (demoMode)
     config.Context.AutoCompactEnabled = false;
 }
 
+// Parse --allow <tool1,tool2,...> flag
+var allowArgIndex = Array.IndexOf(args, "--allow");
+if (allowArgIndex >= 0 && allowArgIndex + 1 < args.Length)
+{
+    var toolNames = args[allowArgIndex + 1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    foreach (var tool in toolNames)
+        config.Permissions.AlwaysApprove.Add(tool);
+}
+
+// Parse --output json flag
+var outputArgIndex = Array.IndexOf(args, "--output");
+var jsonOutputMode = outputArgIndex >= 0 && outputArgIndex + 1 < args.Length
+    && args[outputArgIndex + 1].Equals("json", StringComparison.OrdinalIgnoreCase);
+
+// Parse --continue / -c and --resume / -r flags
+var continueSession = Array.Exists(args, a => a is "--continue" or "-c");
+var resumeArgIndex = Array.FindIndex(args, a => a is "--resume" or "-r");
+string? resumeSessionId = resumeArgIndex >= 0 && resumeArgIndex + 1 < args.Length
+    ? args[resumeArgIndex + 1] : null;
+
 // Register config
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(configManager);
@@ -282,6 +302,43 @@ conversationManager.CreateNew();
 var repl = host.Services.GetRequiredService<ReplLoop>();
 repl.SetTools(aiTools, ExecuteToolAsync);
 
+// Restore session for --continue / --resume
+var sessionManager = host.Services.GetRequiredService<SessionManager>();
+if (continueSession || resumeSessionId is not null)
+{
+    SessionData? sessionToRestore = null;
+
+    if (resumeSessionId is not null)
+    {
+        sessionToRestore = await sessionManager.LoadAsync(resumeSessionId);
+        if (sessionToRestore is null)
+        {
+            AnsiConsole.MarkupLine($"[red]Session not found: {Markup.Escape(resumeSessionId)}[/]");
+            return;
+        }
+    }
+    else // --continue: most recent session
+    {
+        var sessions = sessionManager.List();
+        if (sessions.Count > 0)
+        {
+            sessionToRestore = await sessionManager.LoadAsync(sessions[0].Id);
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[yellow]No saved sessions to continue.[/]");
+        }
+    }
+
+    if (sessionToRestore is not null)
+    {
+        var restored = sessionManager.SessionToConversation(sessionToRestore);
+        conversationManager.SetActive(sessionToRestore.Id, restored);
+        repl.SetSessionId(sessionToRestore.Id);
+        AnsiConsole.MarkupLine($"[green]Resumed session: {Markup.Escape(sessionToRestore.Title)} ({sessionToRestore.Messages.Count} messages)[/]");
+    }
+}
+
 using var cts = new CancellationTokenSource();
 var lastCtrlC = DateTime.MinValue;
 
@@ -314,7 +371,10 @@ var promptArgIndex = Array.IndexOf(args, "--prompt");
 if (promptArgIndex >= 0 && promptArgIndex + 1 < args.Length)
 {
     var singlePrompt = args[promptArgIndex + 1];
-    await repl.RunSinglePromptAsync(singlePrompt, cts.Token);
+    if (jsonOutputMode)
+        await repl.RunSinglePromptJsonAsync(singlePrompt, cts.Token);
+    else
+        await repl.RunSinglePromptAsync(singlePrompt, cts.Token);
 }
 else
 {
