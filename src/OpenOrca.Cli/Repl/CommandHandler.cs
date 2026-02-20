@@ -24,6 +24,7 @@ internal sealed class CommandHandler
     private readonly ConversationManager _conversationManager;
     private readonly SystemPromptBuilder _systemPromptBuilder;
     private readonly ConfigEditor _configEditor;
+    private readonly TerminalPanel _panel;
     private readonly ReplState _state;
     private readonly ILogger _logger;
 
@@ -38,6 +39,7 @@ internal sealed class CommandHandler
         ConversationManager conversationManager,
         SystemPromptBuilder systemPromptBuilder,
         ConfigEditor configEditor,
+        TerminalPanel panel,
         ReplState state,
         ILogger logger)
     {
@@ -49,6 +51,7 @@ internal sealed class CommandHandler
         _conversationManager = conversationManager;
         _systemPromptBuilder = systemPromptBuilder;
         _configEditor = configEditor;
+        _panel = panel;
         _state = state;
         _logger = logger;
     }
@@ -71,7 +74,9 @@ internal sealed class CommandHandler
             case SlashCommand.Clear:
                 conversation.Clear();
                 conversation.AddSystemMessage(await _systemPromptBuilder.GetSystemPromptAsync(Tools, _state.PlanMode));
+                _panel.Teardown();
                 AnsiConsole.Clear();
+                _panel.Setup();
                 ShowWelcomeBannerMinimal();
                 return false;
 

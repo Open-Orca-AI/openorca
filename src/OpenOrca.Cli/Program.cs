@@ -89,6 +89,7 @@ builder.Services.AddSingleton<HookRunner>();
 
 // Register shared REPL state (injected into InputHandler + ReplLoop)
 builder.Services.AddSingleton<ReplState>();
+builder.Services.AddSingleton<TerminalPanel>();
 
 // Register CLI services
 builder.Services.AddSingleton<InputHandler>();
