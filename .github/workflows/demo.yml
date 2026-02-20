@@ -12,6 +12,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -20,15 +22,14 @@ jobs:
 
       - name: Install VHS, ttyd, and ffmpeg
         run: |
-          sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+          # Download VHS .deb and ttyd binary while apt-get update runs
+          curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/v0.10.0/vhs_0.10.0_amd64.deb" -o /tmp/vhs.deb &
+          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" -o /tmp/ttyd &
           sudo apt-get update
-          sudo apt-get install -y vhs ffmpeg
-          VHS_TTYD_VERSION=$(curl -s https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep tag_name | cut -d'"' -f4)
-          curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${VHS_TTYD_VERSION}/ttyd.x86_64" -o /tmp/ttyd
-          chmod +x /tmp/ttyd
-          sudo mv /tmp/ttyd /usr/local/bin/ttyd
+          wait
+          # Install VHS .deb with dependency resolution (pulls in ffmpeg)
+          sudo apt-get install -y /tmp/vhs.deb ffmpeg
+          chmod +x /tmp/ttyd && sudo mv /tmp/ttyd /usr/local/bin/
 
       - name: Publish OpenOrca
         run: |
