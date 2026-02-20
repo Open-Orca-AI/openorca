@@ -10,7 +10,7 @@ namespace OpenOrca.Core.Client;
 /// </summary>
 public sealed class DemoChatClient : IChatClient
 {
-    private const int TokenDelayMs = 30;
+    private const int TokenDelayMs = 8;
 
     private const string ToolCallReadFile =
         "Let me start by reading the README to understand this project.\n\n"

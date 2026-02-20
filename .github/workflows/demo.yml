@@ -36,8 +36,17 @@ jobs:
           chmod +x publish/openorca
           echo "$GITHUB_WORKSPACE/publish" >> "$GITHUB_PATH"
 
-      - name: Record demo GIF
+      - name: Record demo GIF (fast)
         run: vhs demo/demo.tape
+
+      - name: Slow down GIF to natural playback speed
+        run: |
+          # VHS records at ~4x speed to save CI time.
+          # Slow the raw GIF back to 1x with ffmpeg palette-aware conversion.
+          ffmpeg -i demo/demo-raw.gif \
+            -filter_complex "setpts=4.0*PTS,split[s0][s1];[s0]palettegen=max_colors=256:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5" \
+            -loop 0 -y demo/demo.gif
+          rm demo/demo-raw.gif
 
       - name: Upload GIF artifact
         uses: actions/upload-artifact@v4
