@@ -249,11 +249,14 @@ internal sealed class ToolCallExecutor
             var (toolName, args, preResult, _) = callData[i];
             var (result, isError, elapsed) = results[i];
 
-            if (preResult is null)
+            // Pre-resolved calls (plan mode) already rendered in Phase 1
+            if (preResult is not null)
             {
-                result = ApplyRetryDetection(toolName, args, result);
+                resultParts.Add($"[Tool result for {toolName}]\n{result}");
+                continue;
             }
 
+            result = ApplyRetryDetection(toolName, args, result);
             _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
             resultParts.Add($"[Tool result for {toolName}]\n{result}");
         }
