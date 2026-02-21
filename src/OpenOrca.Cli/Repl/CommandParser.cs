@@ -23,13 +23,25 @@ public enum SlashCommand
     Undo,
     Rename,
     Add,
-    Ask
+    Ask,
+    Checkpoint,
+    CustomCommand
 }
 
 public sealed record ParsedCommand(SlashCommand Command, string[] Args);
 
 public sealed class CommandParser
 {
+    private HashSet<string>? _customCommandNames;
+
+    /// <summary>
+    /// Set the known custom command names for fallback resolution.
+    /// </summary>
+    public void SetCustomCommandNames(IEnumerable<string> names)
+    {
+        _customCommandNames = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+    }
+
     public ParsedCommand? TryParse(string input)
     {
         if (string.IsNullOrWhiteSpace(input) || !input.StartsWith('/'))
@@ -62,7 +74,27 @@ public sealed class CommandParser
             "/rename" => new ParsedCommand(SlashCommand.Rename, args),
             "/add" => new ParsedCommand(SlashCommand.Add, args),
             "/ask" => new ParsedCommand(SlashCommand.Ask, args),
-            _ => null
+            "/checkpoint" or "/cp!" => new ParsedCommand(SlashCommand.Checkpoint, args),
+            _ => TryParseCustomCommand(cmd, args)
         };
+    }
+
+    private ParsedCommand? TryParseCustomCommand(string cmd, string[] args)
+    {
+        if (_customCommandNames is null)
+            return null;
+
+        // cmd is like "/review-pr" — strip the leading /
+        var name = cmd[1..];
+        if (_customCommandNames.Contains(name))
+        {
+            // Pack the command name as args[0], user args follow
+            var customArgs = new string[args.Length + 1];
+            customArgs[0] = name;
+            Array.Copy(args, 0, customArgs, 1, args.Length);
+            return new ParsedCommand(SlashCommand.CustomCommand, customArgs);
+        }
+
+        return null;
     }
 }

@@ -12,14 +12,14 @@
 
 ![OpenOrca Demo](demo/demo.gif)
 
-**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 34 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
+**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 35 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
 
 Think of it as a local, private, open-source alternative to cloud-based AI coding assistants.
 
 ## Features
 
 - **Autonomous agent loop** — the LLM plans, acts, observes results, and iterates up to 25 turns per request
-- **34 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, network diagnostics, archiving, and more
+- **35 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, network diagnostics, archiving, and more
 - **Works with any local model** — Mistral, Llama, DeepSeek, Qwen, or any model served via OpenAI-compatible API
 - **Native + text-based tool calling** — auto-detects whether your model supports OpenAI function calling and falls back to text-based `<tool_call>` tags
 - **Streaming with live thinking indicator** — see tokens arrive in real-time, or collapse thinking with Ctrl+O
@@ -27,6 +27,10 @@ Think of it as a local, private, open-source alternative to cloud-based AI codin
 - **Session management** — auto-save and restore conversations
 - **Context management** — auto-compaction when approaching context limits, manual `/compact`
 - **Project instructions** — drop an `ORCA.md` file in your project root for persistent instructions
+- **Custom slash commands** — create `.orca/commands/*.md` files to define project-specific commands
+- **File checkpoints** — automatic snapshots before file edits, with `/checkpoint` to list, diff, and restore
+- **Auto memory** — session learnings are saved and loaded into future sessions automatically
+- **Permission glob patterns** — allow/deny rules like `Bash(git *)` and `Write(src/**)`
 - **Hooks** — run custom shell commands before/after tool execution
 - **Permission system** — approve tool calls by risk level (read-only, moderate, dangerous)
 - **Sub-agent spawning** — delegate focused tasks to independent agent instances
@@ -129,7 +133,9 @@ Config is stored at `~/.openorca/config.json`. Edit interactively with `/config`
     "autoApproveReadOnly": true,
     "autoApproveModerate": false,
     "alwaysApprove": [],
-    "disabledTools": []
+    "disabledTools": [],
+    "allowPatterns": ["Bash(git *)", "Bash(dotnet *)"],
+    "denyPatterns": ["Bash(rm -rf *)", "Bash(sudo *)"]
   },
   "context": {
     "contextWindowSize": 8192,
@@ -144,6 +150,10 @@ Config is stored at `~/.openorca/config.json`. Edit interactively with `/config`
   "hooks": {
     "preToolHooks": {},
     "postToolHooks": {}
+  },
+  "memory": {
+    "autoMemoryEnabled": true,
+    "maxMemoryFiles": 20
   }
 }
 ```
@@ -164,16 +174,17 @@ OpenOrca.sln
 ├── src/
 │   ├── OpenOrca.Cli          # Console app, REPL, streaming UI
 │   │   ├── Repl/             # ReplLoop, CommandHandler, AgentLoopRunner, etc.
-│   │   └── Rendering/        # StreamingRenderer, ThinkingIndicator, ToolCallRenderer
+│   │   ├── Rendering/        # StreamingRenderer, ThinkingIndicator, ToolCallRenderer
+│   │   └── CustomCommands/   # CustomCommandLoader
 │   ├── OpenOrca.Core          # Domain logic
 │   │   ├── Chat/             # ConversationManager, Conversation
 │   │   ├── Client/           # LmStudioClientFactory, ModelDiscovery
-│   │   ├── Configuration/    # OrcaConfig, ConfigManager, PromptManager
+│   │   ├── Configuration/    # OrcaConfig, ConfigManager, PromptManager, MemoryManager
 │   │   ├── Hooks/            # HookRunner
 │   │   ├── Orchestration/    # AgentOrchestrator
-│   │   ├── Permissions/      # PermissionManager
-│   │   └── Session/          # SessionManager
-│   └── OpenOrca.Tools         # 34 tool implementations
+│   │   ├── Permissions/      # PermissionManager, PermissionPattern
+│   │   └── Session/          # SessionManager, CheckpointManager
+│   └── OpenOrca.Tools         # 35 tool implementations
 │       ├── FileSystem/       # read_file, write_file, edit_file, glob, grep, etc.
 │       ├── Shell/            # bash, background processes
 │       ├── Git/              # git_status, git_commit, git_push, etc.
@@ -193,13 +204,14 @@ OpenOrca.sln
 
 ## Tools
 
-### File System (11 tools)
+### File System (12 tools)
 
 | Tool | Risk | Description |
 |------|------|-------------|
 | `read_file` | ReadOnly | Read file contents with line numbers |
 | `write_file` | Moderate | Create or overwrite files |
 | `edit_file` | Moderate | Exact string replacement in files |
+| `multi_edit` | Moderate | Batch edit multiple files atomically with rollback |
 | `delete_file` | Moderate | Delete files or directories |
 | `copy_file` | Moderate | Copy files or directories |
 | `move_file` | Moderate | Move or rename files |
@@ -271,7 +283,8 @@ OpenOrca.sln
 | `/rewind [N]` | Remove last N turns |
 | `/context`, `/ctx` | Show context window usage |
 | `/stats`, `/cost` | Session statistics |
-| `/memory [show\|edit]` | View/edit ORCA.md project instructions |
+| `/memory [show\|edit\|list\|auto\|clear-auto]` | View/edit ORCA.md, manage auto memory |
+| `/checkpoint [list\|diff\|restore\|clear]` | Manage file checkpoints |
 | `/doctor`, `/diag` | Run diagnostic checks |
 | `/copy`, `/cp` | Copy last response to clipboard |
 | `/export [path]` | Export conversation to markdown |
@@ -282,6 +295,7 @@ OpenOrca.sln
 | `/add <file> [...]` | Add file contents to conversation context |
 | `/ask [question]` | Toggle ask mode (no args) or one-shot ask (with args) |
 | `!<command>` | Run shell command directly |
+| `/<custom>` | Run a custom command from `.orca/commands/` |
 | `/exit`, `/quit`, `/q` | Exit |
 
 ### Keyboard Shortcuts

@@ -12,6 +12,7 @@ using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Orchestration;
 using OpenOrca.Core.Permissions;
 using OpenOrca.Core.Session;
+using OpenOrca.Cli.CustomCommands;
 using OpenOrca.Core.Hooks;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Agent;
@@ -87,6 +88,13 @@ builder.Services.AddSingleton<PromptManager>();
 builder.Services.AddSingleton(config.Hooks);
 builder.Services.AddSingleton<HookRunner>();
 
+// Register checkpoint manager
+builder.Services.AddSingleton<CheckpointManager>();
+
+// Register custom commands and memory
+builder.Services.AddSingleton<CustomCommandLoader>();
+builder.Services.AddSingleton<MemoryManager>();
+
 // Register shared REPL state (injected into InputHandler + ReplLoop)
 builder.Services.AddSingleton<ReplState>();
 builder.Services.AddSingleton<TerminalPanel>();
@@ -151,6 +159,8 @@ permissionManager.PromptForApproval = (toolName, riskLevel) =>
 };
 
 var hookRunner = host.Services.GetRequiredService<HookRunner>();
+var checkpointManager = host.Services.GetRequiredService<CheckpointManager>();
+var replState = host.Services.GetRequiredService<ReplState>();
 
 // Create tool executor with permission checks
 async Task<string> ExecuteToolAsync(string toolName, string argsJson, CancellationToken ct)
@@ -167,8 +177,8 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
 
     programLogger.LogDebug("Tool resolved: {Tool} (risk: {Risk})", toolName, tool.RiskLevel);
 
-    // Permission check
-    var approved = await permissionManager.CheckPermissionAsync(toolName, tool.RiskLevel.ToString());
+    // Permission check (with glob pattern matching)
+    var approved = await permissionManager.CheckPermissionAsync(toolName, tool.RiskLevel.ToString(), argsJson);
     if (!approved)
     {
         programLogger.LogInformation("Permission denied for tool: {Tool}", toolName);
@@ -191,6 +201,37 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
     {
         programLogger.LogWarning(parseEx, "Failed to parse tool args JSON, using empty object");
         argsElement = JsonDocument.Parse("{}").RootElement;
+    }
+
+    // Snapshot file before modification (checkpoint)
+    if (toolName is "edit_file" or "write_file" or "delete_file" or "copy_file" or "move_file" or "multi_edit")
+    {
+        var sid = replState.CurrentSessionId ?? "default";
+        try
+        {
+            if (toolName == "multi_edit")
+            {
+                if (argsElement.TryGetProperty("edits", out var editsArr) && editsArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var edit in editsArr.EnumerateArray())
+                    {
+                        if (edit.TryGetProperty("path", out var ep))
+                            await checkpointManager.SnapshotAsync(ep.GetString()!, sid);
+                    }
+                }
+            }
+            else if (argsElement.TryGetProperty("path", out var pathProp))
+            {
+                await checkpointManager.SnapshotAsync(pathProp.GetString()!, sid);
+            }
+
+            if (toolName == "move_file" && argsElement.TryGetProperty("source", out var srcProp))
+                await checkpointManager.SnapshotAsync(srcProp.GetString()!, sid);
+        }
+        catch (Exception cpEx)
+        {
+            programLogger.LogWarning(cpEx, "Failed to create checkpoint for {Tool}", toolName);
+        }
     }
 
     // Validate required arguments before execution

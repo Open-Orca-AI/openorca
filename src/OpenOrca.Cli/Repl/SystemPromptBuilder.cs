@@ -5,17 +5,19 @@ namespace OpenOrca.Cli.Repl;
 
 /// <summary>
 /// Builds the system prompt for the LLM, including tool lists, project instructions,
-/// and plan mode additions.
+/// auto memory, and plan mode additions.
 /// </summary>
 internal sealed class SystemPromptBuilder
 {
     private readonly OrcaConfig _config;
     private readonly PromptManager _promptManager;
+    private readonly MemoryManager? _memoryManager;
 
-    public SystemPromptBuilder(OrcaConfig config, PromptManager promptManager)
+    public SystemPromptBuilder(OrcaConfig config, PromptManager promptManager, MemoryManager? memoryManager = null)
     {
         _config = config;
         _promptManager = promptManager;
+        _memoryManager = memoryManager;
     }
 
     public async Task<string> GetSystemPromptAsync(IList<AITool>? tools, bool planMode)
@@ -47,6 +49,21 @@ internal sealed class SystemPromptBuilder
         // Append project instructions if not already templated
         if (!string.IsNullOrWhiteSpace(projectInstructions) && !result.Contains(projectInstructions))
             result += "\n\nPROJECT INSTRUCTIONS (from ORCA.md):\n" + projectInstructions;
+
+        // Append auto memory
+        if (_memoryManager is not null)
+        {
+            try
+            {
+                var memoryContent = await _memoryManager.LoadAllMemoryAsync();
+                if (!string.IsNullOrWhiteSpace(memoryContent))
+                    result += "\n\nPROJECT MEMORY (auto-learned):\n" + memoryContent;
+            }
+            catch
+            {
+                // Don't fail system prompt generation if memory loading fails
+            }
+        }
 
         if (planMode)
             result += "\n\n" + PromptConstants.PlanModeSystemPromptAddition;

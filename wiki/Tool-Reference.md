@@ -1,6 +1,6 @@
 # Tool Reference
 
-OpenOrca includes 34 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
+OpenOrca includes 35 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
 
 ## Permission Levels
 
@@ -14,7 +14,7 @@ You can customize permissions in [Configuration](Configuration). Specific tools 
 
 ---
 
-## File System (11 tools)
+## File System (12 tools)
 
 ### `read_file`
 **Risk:** ReadOnly
@@ -49,6 +49,29 @@ Replace an exact string in a file. The `old_string` must match exactly (includin
 | `old_string` | string | Yes | Text to find |
 | `new_string` | string | Yes | Replacement text |
 | `create_if_missing` | boolean | No | When true and the file doesn't exist, create it with `new_string` as content (`old_string` must be empty). Defaults to false |
+
+### `multi_edit`
+**Risk:** Moderate
+
+Apply multiple edits across one or more files atomically. If any edit fails, all changes are rolled back to their original state.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `edits` | array | Yes | Array of edit operations |
+
+Each edit in the array:
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `path` | string | Yes | File path to edit |
+| `old_string` | string | Yes | Text to find |
+| `new_string` | string | Yes | Replacement text |
+| `replace_all` | boolean | No | Replace all occurrences (default: false) |
+
+The tool executes in three phases:
+1. **Validate** — reads all files and verifies each `old_string` exists (and is unique unless `replace_all` is set)
+2. **Apply** — computes all edits in memory
+3. **Write** — writes all files to disk; if any write fails, restores all files from their original content
 
 ### `delete_file`
 **Risk:** Moderate

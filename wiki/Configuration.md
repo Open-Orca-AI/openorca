@@ -22,7 +22,9 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
     "autoApproveReadOnly": true,
     "autoApproveModerate": false,
     "alwaysApprove": [],
-    "disabledTools": []
+    "disabledTools": [],
+    "allowPatterns": [],
+    "denyPatterns": []
   },
   "context": {
     "contextWindowSize": 8192,
@@ -42,6 +44,10 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
   "hooks": {
     "preToolHooks": {},
     "postToolHooks": {}
+  },
+  "memory": {
+    "autoMemoryEnabled": true,
+    "maxMemoryFiles": 20
   }
 }
 ```
@@ -71,6 +77,47 @@ OpenOrca configuration is stored at `~/.openorca/config.json`. Edit it directly,
 | `autoApproveModerate` | bool | `false` | Auto-approve Moderate tools (file writing, git commit, mkdir). Useful for trusted workflows. |
 | `alwaysApprove` | string[] | `[]` | List of specific tool names to always auto-approve, regardless of risk level. Example: `["bash", "write_file"]` |
 | `disabledTools` | string[] | `[]` | List of tool names to completely disable. These tools won't appear in the system prompt or be callable. |
+| `allowPatterns` | string[] | `[]` | Glob patterns for auto-approving specific tool+argument combinations. Format: `ToolName(argGlob)`. Example: `Bash(git *)` auto-approves all git commands. |
+| `denyPatterns` | string[] | `[]` | Glob patterns for blocking specific tool+argument combinations. **Deny takes priority over allow.** Example: `Bash(rm -rf *)` blocks all `rm -rf` commands. |
+
+### Permission Glob Patterns
+
+Permission glob patterns provide fine-grained control over tool approvals based on the command or file path being used. Patterns use the format `ToolName(argGlob)`.
+
+**Pattern syntax:**
+- `*` matches any characters within a single path segment
+- `**` matches any characters across path segments (for file paths)
+- Tool names are matched case-insensitively
+
+**How it works:**
+1. Deny patterns are checked first — if any match, the tool call is blocked
+2. Allow patterns are checked next — if any match, the tool call is auto-approved
+3. If no pattern matches, the standard permission flow applies
+
+**Argument extraction by tool type:**
+| Tool | Argument used for matching |
+|------|---------------------------|
+| `bash` | The `command` property |
+| `write_file`, `edit_file`, `read_file`, `delete_file`, `copy_file`, `move_file`, `multi_edit` | The `path` property |
+
+**Examples:**
+```json
+{
+  "permissions": {
+    "allowPatterns": [
+      "Bash(git *)",
+      "Bash(dotnet *)",
+      "write_file(src/**)",
+      "edit_file(src/**)"
+    ],
+    "denyPatterns": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "write_file(.env*)"
+    ]
+  }
+}
+```
 
 ### CLI Override: `--allow`
 
@@ -156,6 +203,24 @@ The `--allow` flag appends to `alwaysApprove` for that session only — it doesn
 
 See [Hooks & Extensibility](Hooks-and-Extensibility) for details and examples.
 
+## Memory Settings (`memory`)
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `autoMemoryEnabled` | bool | `true` | Automatically save session learnings at session end and load them into the system prompt for future sessions. |
+| `maxMemoryFiles` | int | `20` | Maximum number of auto-generated memory files. Oldest files are pruned when this limit is exceeded. |
+
+When enabled, at the end of each session that includes meaningful tool usage, OpenOrca asks the LLM to summarize project-specific patterns and learnings. These are saved as `.md` files in:
+- **Project memory:** `.orca/memory/` (takes priority)
+- **Global memory:** `~/.openorca/memory/`
+
+Memory content is loaded into the system prompt at session start. Manage memory with the `/memory` command:
+- `/memory list` — list all memory files
+- `/memory auto on|off` — toggle auto memory
+- `/memory clear-auto` — delete all auto-generated memory files
+
+See [Auto Memory](Auto-Memory) for details.
+
 ---
 
 ## Data Directory Structure
@@ -170,7 +235,28 @@ All OpenOrca data lives under `~/.openorca/`:
 ├── prompts/
 │   ├── default.md         # Default system prompt template
 │   └── mistral-7b-instruct-v0.3.md  # Auto-generated model-specific prompt
-└── sessions/
-    ├── abc123.json         # Saved conversation sessions
-    └── ...
+├── sessions/
+│   ├── abc123.json         # Saved conversation sessions
+│   └── ...
+├── checkpoints/            # File checkpoints (per session)
+│   └── {sessionId}/
+│       ├── manifest.json   # Checkpoint manifest
+│       └── *.bak           # Original file snapshots
+├── memory/                 # Global auto-learned memory files
+│   └── 20260221-a1b2c3.md
+└── commands/               # Global custom slash commands
+    └── my-command.md
+```
+
+### Project-Level Data
+
+Projects can also have local data in `.orca/`:
+
+```
+.orca/
+├── ORCA.md                 # Project instructions
+├── commands/               # Project-level custom slash commands
+│   └── review-pr.md
+└── memory/                 # Project-level auto-learned memory
+    └── 20260221-d4e5f6.md
 ```

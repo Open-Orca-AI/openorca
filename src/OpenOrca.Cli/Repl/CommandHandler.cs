@@ -8,6 +8,7 @@ using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Serialization;
 using OpenOrca.Core.Session;
+using OpenOrca.Cli.CustomCommands;
 using Spectre.Console;
 
 namespace OpenOrca.Cli.Repl;
@@ -28,6 +29,9 @@ internal sealed class CommandHandler
     private readonly TerminalPanel _panel;
     private readonly ReplState _state;
     private readonly ILogger _logger;
+    private readonly CheckpointManager _checkpointManager;
+    private readonly CustomCommandLoader _customCommandLoader;
+    private readonly MemoryManager _memoryManager;
 
     public IList<AITool>? Tools { get; set; }
 
@@ -42,7 +46,10 @@ internal sealed class CommandHandler
         ConfigEditor configEditor,
         TerminalPanel panel,
         ReplState state,
-        ILogger logger)
+        ILogger logger,
+        CheckpointManager checkpointManager,
+        CustomCommandLoader customCommandLoader,
+        MemoryManager memoryManager)
     {
         _chatClient = chatClient;
         _config = config;
@@ -55,6 +62,9 @@ internal sealed class CommandHandler
         _panel = panel;
         _state = state;
         _logger = logger;
+        _checkpointManager = checkpointManager;
+        _customCommandLoader = customCommandLoader;
+        _memoryManager = memoryManager;
     }
 
     /// <summary>
@@ -154,6 +164,14 @@ internal sealed class CommandHandler
 
             case SlashCommand.Ask:
                 HandleAskToggle();
+                return false;
+
+            case SlashCommand.Checkpoint:
+                await HandleCheckpointAsync(command.Args);
+                return false;
+
+            case SlashCommand.CustomCommand:
+                await HandleCustomCommandAsync(command.Args, conversation);
                 return false;
 
             default:
@@ -666,6 +684,16 @@ internal sealed class CommandHandler
                     var path = loader.GetInstructionsPath(cwd);
                     AnsiConsole.MarkupLine($"[yellow]No ORCA.md found. Create one at: {Markup.Escape(path ?? cwd)}[/]");
                 }
+
+                // Also show auto memory
+                var autoMemory = await _memoryManager.LoadAllMemoryAsync();
+                if (!string.IsNullOrWhiteSpace(autoMemory))
+                {
+                    AnsiConsole.Write(new Panel(Markup.Escape(autoMemory))
+                        .Header("[magenta]Auto Memory[/]")
+                        .Border(BoxBorder.Rounded)
+                        .BorderColor(Color.Magenta1));
+                }
                 break;
 
             case "edit":
@@ -702,8 +730,44 @@ internal sealed class CommandHandler
                 }
                 break;
 
+            case "auto":
+                if (args.Length > 1)
+                {
+                    var toggle = args[1].ToLowerInvariant();
+                    _config.Memory.AutoMemoryEnabled = toggle is "on" or "true" or "1";
+                    AnsiConsole.MarkupLine(_config.Memory.AutoMemoryEnabled
+                        ? "[green]Auto memory enabled.[/]"
+                        : "[grey]Auto memory disabled.[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine($"Auto memory is [{(_config.Memory.AutoMemoryEnabled ? "green" : "grey")}]{(_config.Memory.AutoMemoryEnabled ? "enabled" : "disabled")}[/].");
+                }
+                break;
+
+            case "list":
+                var files = await _memoryManager.ListAsync();
+                if (files.Count == 0)
+                {
+                    AnsiConsole.MarkupLine("[grey]No auto memory files.[/]");
+                }
+                else
+                {
+                    foreach (var (memPath, preview) in files)
+                    {
+                        var name = Path.GetFileName(memPath);
+                        AnsiConsole.MarkupLine($"  [cyan]{Markup.Escape(name)}[/] — {Markup.Escape(preview)}");
+                    }
+                }
+                break;
+
+            case "clear-auto":
+                await _memoryManager.ClearAsync();
+                AnsiConsole.MarkupLine("[green]Auto memory files cleared.[/]");
+                break;
+
             default:
-                AnsiConsole.MarkupLine("[yellow]Usage: /memory [show|edit][/]");
+                AnsiConsole.MarkupLine("[yellow]Usage: /memory [show|edit|auto on/off|list|clear-auto][/]");
                 break;
         }
     }
@@ -1186,6 +1250,128 @@ internal sealed class CommandHandler
         return stdout;
     }
 
+    private async Task HandleCheckpointAsync(string[] args)
+    {
+        var action = args.Length > 0 ? args[0].ToLowerInvariant() : "list";
+        var sessionId = _state.CurrentSessionId ?? "default";
+
+        switch (action)
+        {
+            case "list":
+                var entries = await _checkpointManager.ListAsync(sessionId);
+                if (entries.Count == 0)
+                {
+                    AnsiConsole.MarkupLine("[grey]No file checkpoints in this session.[/]");
+                    return;
+                }
+
+                var table = new Table()
+                    .Border(TableBorder.Rounded)
+                    .Expand()
+                    .AddColumn("File")
+                    .AddColumn("Checkpointed At")
+                    .AddColumn("Size");
+
+                foreach (var entry in entries)
+                {
+                    var relativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), entry.FilePath);
+                    table.AddRow(
+                        Markup.Escape(relativePath),
+                        entry.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                        $"{entry.SizeBytes:N0} bytes");
+                }
+                AnsiConsole.Write(table);
+                break;
+
+            case "diff":
+                var diffPath = args.Length > 1 ? Path.GetFullPath(args[1]) : null;
+                if (diffPath is null)
+                {
+                    AnsiConsole.MarkupLine("[yellow]Usage: /checkpoint diff <file>[/]");
+                    return;
+                }
+                var diff = await _checkpointManager.DiffAsync(diffPath, sessionId);
+                AnsiConsole.Write(new Panel(Markup.Escape(diff))
+                    .Header("[cyan]Checkpoint Diff[/]")
+                    .Border(BoxBorder.Rounded)
+                    .BorderColor(Color.Cyan1));
+                break;
+
+            case "restore":
+                var restorePath = args.Length > 1 ? Path.GetFullPath(args[1]) : null;
+                if (restorePath is null)
+                {
+                    AnsiConsole.MarkupLine("[yellow]Usage: /checkpoint restore <file>[/]");
+                    return;
+                }
+                var confirm = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title($"[yellow]Restore {Markup.Escape(Path.GetFileName(restorePath))} from checkpoint?[/]")
+                        .AddChoices("Yes", "No"));
+                if (confirm == "Yes")
+                {
+                    var restored = await _checkpointManager.RestoreAsync(restorePath, sessionId);
+                    if (restored)
+                        AnsiConsole.MarkupLine($"[green]Restored: {Markup.Escape(restorePath)}[/]");
+                    else
+                        AnsiConsole.MarkupLine($"[red]No checkpoint found for: {Markup.Escape(restorePath)}[/]");
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+                }
+                break;
+
+            case "clear":
+                _checkpointManager.Cleanup(sessionId);
+                AnsiConsole.MarkupLine("[green]All checkpoints cleared for this session.[/]");
+                break;
+
+            default:
+                AnsiConsole.MarkupLine("[yellow]Usage: /checkpoint list|diff <file>|restore <file>|clear[/]");
+                break;
+        }
+    }
+
+    private async Task HandleCustomCommandAsync(string[] args, Conversation conversation)
+    {
+        if (args.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[red]Custom command name missing.[/]");
+            return;
+        }
+
+        var commandName = args[0];
+        var userArgs = args.Length > 1 ? args[1..] : [];
+
+        try
+        {
+            var template = await _customCommandLoader.LoadTemplateAsync(commandName);
+            if (template is null)
+            {
+                AnsiConsole.MarkupLine($"[red]Custom command template not found: {Markup.Escape(commandName)}[/]");
+                return;
+            }
+
+            // Substitute template variables
+            var joined = string.Join(" ", userArgs);
+            var rendered = template.Replace("{{ARGS}}", joined);
+            for (var i = 0; i < userArgs.Length; i++)
+            {
+                rendered = rendered.Replace($"{{{{ARG{i + 1}}}}}", userArgs[i]);
+            }
+
+            // Inject as user message
+            conversation.AddUserMessage(rendered);
+            AnsiConsole.MarkupLine($"[cyan]Running custom command: /{Markup.Escape(commandName)}[/]");
+            _logger.LogInformation("Custom command /{Name} injected ({Len} chars)", commandName, rendered.Length);
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Failed to load custom command: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
     private void ShowHelp()
     {
         var table = new Table()
@@ -1204,7 +1390,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/rewind [N]"), "Remove last N turn(s) from conversation");
         table.AddRow(Markup.Escape("/context, /ctx"), "Show context window usage");
         table.AddRow(Markup.Escape("/stats, /cost"), "Show session statistics");
-        table.AddRow(Markup.Escape("/memory [show|edit]"), "View or edit ORCA.md project instructions");
+        table.AddRow(Markup.Escape("/memory [show|edit|auto|list|clear-auto]"), "View/edit ORCA.md and auto memory");
         table.AddRow(Markup.Escape("/doctor, /diag"), "Run diagnostic checks");
         table.AddRow(Markup.Escape("/copy, /cp"), "Copy last response to clipboard");
         table.AddRow(Markup.Escape("/export [path]"), "Export conversation to markdown");
@@ -1214,10 +1400,30 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/rename <name>"), "Rename current session");
         table.AddRow(Markup.Escape("/add <file> [...]"), "Add file contents to conversation context");
         table.AddRow(Markup.Escape("/ask [question]"), "Toggle ask mode (no args) or one-shot ask (with args)");
+        table.AddRow(Markup.Escape("/checkpoint list|diff|restore|clear"), "Manage file checkpoints (auto-saved before edits)");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 
         AnsiConsole.Write(table);
+
+        // Show discovered custom commands
+        var customCommands = _customCommandLoader.DiscoverCommands();
+        if (customCommands.Count > 0)
+        {
+            AnsiConsole.MarkupLine("\n[bold]Custom Commands[/] [grey](from .orca/commands/)[/]");
+            foreach (var (name, path) in customCommands)
+            {
+                var firstLine = "";
+                try
+                {
+                    using var reader = new StreamReader(path);
+                    firstLine = reader.ReadLine()?.TrimStart('#', ' ') ?? "";
+                    if (firstLine.Length > 60) firstLine = firstLine[..57] + "...";
+                }
+                catch { }
+                AnsiConsole.MarkupLine($"  [cyan]/{Markup.Escape(name)}[/] {Markup.Escape(firstLine)}");
+            }
+        }
 
         AnsiConsole.MarkupLine($"[grey]  Shift+Tab  Cycle input mode (Normal → Plan → Ask → Normal)[/]");
         AnsiConsole.MarkupLine($"[grey]  Ctrl+O     Toggle thinking output (currently {(_state.ShowThinking ? "[green]visible[/]" : "[yellow]hidden[/]")})[/]");

@@ -13,6 +13,9 @@
 - [Configuration](Configuration)
 - [Sessions & Context](Sessions-and-Context)
 - [Project Instructions (ORCA.md)](Project-Instructions)
+- [Custom Commands](Custom-Commands)
+- [File Checkpoints](File-Checkpoints)
+- [Auto Memory](Auto-Memory)
 - [Troubleshooting](Troubleshooting)
 
 ### Developer Guide
