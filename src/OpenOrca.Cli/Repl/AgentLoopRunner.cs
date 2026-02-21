@@ -127,6 +127,7 @@ internal sealed class AgentLoopRunner
                 options.ModelId = _config.LmStudio.Model;
 
             _streamingRenderer.Clear();
+            _streamingRenderer.DefaultAnsiColor = "\x1b[36m";
 
             // Capture the real stdout so the ThinkingIndicator can write to it
             var realStdout = Console.Out;
