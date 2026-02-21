@@ -45,6 +45,7 @@ public class CommandParserTests
     [InlineData("/ask", SlashCommand.Ask)]
     [InlineData("/fork", SlashCommand.Fork)]
     [InlineData("/f!", SlashCommand.Fork)]
+    [InlineData("/review", SlashCommand.Review)]
     public void Parse_ValidCommand_ReturnsCorrectSlashCommand(string input, SlashCommand expected)
     {
         var result = _parser.TryParse(input);
@@ -209,5 +210,38 @@ public class CommandParserTests
         Assert.NotNull(result);
         Assert.Equal(SlashCommand.Ask, result.Command);
         Assert.Equal(["what", "is", "a", "monad"], result.Args);
+    }
+
+    [Fact]
+    public void Parse_ReviewStaged_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/review staged");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Review, result.Command);
+        Assert.Single(result.Args);
+        Assert.Equal("staged", result.Args[0]);
+    }
+
+    [Fact]
+    public void Parse_ReviewCommitHash_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/review abc123");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Review, result.Command);
+        Assert.Single(result.Args);
+        Assert.Equal("abc123", result.Args[0]);
+    }
+
+    [Fact]
+    public void Parse_ReviewFile_ExtractsArgs()
+    {
+        var result = _parser.TryParse("/review src/Program.cs");
+
+        Assert.NotNull(result);
+        Assert.Equal(SlashCommand.Review, result.Command);
+        Assert.Single(result.Args);
+        Assert.Equal("src/Program.cs", result.Args[0]);
     }
 }

@@ -7,6 +7,7 @@ using OpenOrca.Cli.Rendering;
 using OpenOrca.Cli.Serialization;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Orchestration;
 using OpenOrca.Core.Session;
 using OpenOrca.Tools.Registry;
 using Spectre.Console;
@@ -49,6 +50,7 @@ public sealed class ReplLoop
         CheckpointManager checkpointManager,
         CustomCommandLoader customCommandLoader,
         MemoryManager memoryManager,
+        AgentOrchestrator orchestrator,
         ILogger<ReplLoop> logger)
     {
         _chatClient = chatClient;
@@ -73,10 +75,16 @@ public sealed class ReplLoop
         var customCommands = customCommandLoader.DiscoverCommands();
         commandParser.SetCustomCommandNames(customCommands.Keys);
 
+        // Discover custom agent definitions and register with the type registry
+        var customAgentLoader = new CustomAgentLoader();
+        var toolNames = toolRegistry.GetToolNames();
+        var customAgents = customAgentLoader.DiscoverAgents(toolNames);
+        AgentTypeRegistry.RegisterCustom(customAgents);
+
         _commandHandler = new CommandHandler(
             chatClient, config, configManager, sessionManager, toolCallRenderer,
             conversationManager, _systemPromptBuilder, configEditor, panel, _state, logger,
-            checkpointManager, customCommandLoader, memoryManager);
+            checkpointManager, customCommandLoader, memoryManager, orchestrator);
 
         _agentLoopRunner = new AgentLoopRunner(
             chatClient, config, streamingRenderer, toolCallParser,
@@ -232,6 +240,7 @@ public sealed class ReplLoop
                     continue;
                 }
 
+                input = InputPreprocessor.ExpandFileReferences(input);
                 conversation.AddUserMessage(input);
             }
 

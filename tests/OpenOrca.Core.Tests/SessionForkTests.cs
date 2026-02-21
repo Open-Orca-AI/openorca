@@ -9,20 +9,19 @@ namespace OpenOrca.Core.Tests;
 public class SessionForkTests : IDisposable
 {
     private readonly SessionManager _manager;
-    private readonly List<string> _createdIds = [];
+    private readonly string _tempDir;
 
     public SessionForkTests()
     {
+        _tempDir = Path.Combine(Path.GetTempPath(), $"openorca-session-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempDir);
         var config = new OrcaConfig();
-        _manager = new SessionManager(config, NullLogger<SessionManager>.Instance);
+        _manager = new SessionManager(config, NullLogger<SessionManager>.Instance, _tempDir);
     }
 
     public void Dispose()
     {
-        foreach (var id in _createdIds)
-        {
-            try { _manager.Delete(id); } catch { }
-        }
+        try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
     [Fact]
@@ -33,10 +32,8 @@ public class SessionForkTests : IDisposable
         conversation.AddAssistantMessage("Hi!");
 
         var parentId = await _manager.SaveAsync(conversation, "Parent", $"test_{Guid.NewGuid():N}");
-        _createdIds.Add(parentId);
 
         var forkId = await _manager.ForkAsync(conversation, "My Fork", parentId, 2);
-        _createdIds.Add(forkId);
 
         Assert.NotEqual(parentId, forkId);
 
@@ -56,10 +53,8 @@ public class SessionForkTests : IDisposable
         conversation.AddUserMessage("Second");
 
         var parentId = await _manager.SaveAsync(conversation, "Parent", $"test_{Guid.NewGuid():N}");
-        _createdIds.Add(parentId);
 
         var forkId = await _manager.ForkAsync(conversation, null, parentId, 3);
-        _createdIds.Add(forkId);
 
         var forked = await _manager.LoadAsync(forkId);
         Assert.NotNull(forked);
@@ -74,10 +69,8 @@ public class SessionForkTests : IDisposable
         conversation.AddUserMessage("Test");
 
         var parentId = await _manager.SaveAsync(conversation, "Original", $"test_{Guid.NewGuid():N}");
-        _createdIds.Add(parentId);
 
         var forkId = await _manager.ForkAsync(conversation, null, parentId, 1);
-        _createdIds.Add(forkId);
 
         var forked = await _manager.LoadAsync(forkId);
         Assert.NotNull(forked);
@@ -87,10 +80,9 @@ public class SessionForkTests : IDisposable
     [Fact]
     public void GetSessionTree_NoSessions_ReturnsEmpty()
     {
-        // Note: this test relies on the existing session dir state,
-        // but verifies the method doesn't crash
         var tree = _manager.GetSessionTree();
         Assert.NotNull(tree);
+        Assert.Empty(tree);
     }
 
     [Fact]
@@ -100,10 +92,8 @@ public class SessionForkTests : IDisposable
         conversation.AddUserMessage("Root");
 
         var rootId = await _manager.SaveAsync(conversation, "Root Session", $"test_{Guid.NewGuid():N}");
-        _createdIds.Add(rootId);
 
         var forkId = await _manager.ForkAsync(conversation, "Fork 1", rootId, 1);
-        _createdIds.Add(forkId);
 
         // Verify fork was created with correct parent
         var forked = await _manager.LoadAsync(forkId);
@@ -116,17 +106,13 @@ public class SessionForkTests : IDisposable
 
         // Verify the fork has depth > 0 when its parent exists in the tree
         var forkInTree = tree.Where(t => t.Session.Id == forkId).ToList();
-        if (forkInTree.Count > 0)
-        {
-            Assert.Equal(1, forkInTree[0].Depth);
-        }
+        Assert.Single(forkInTree);
+        Assert.Equal(1, forkInTree[0].Depth);
 
         // Verify root is at depth 0
         var rootInTree = tree.Where(t => t.Session.Id == rootId).ToList();
-        if (rootInTree.Count > 0)
-        {
-            Assert.Equal(0, rootInTree[0].Depth);
-        }
+        Assert.Single(rootInTree);
+        Assert.Equal(0, rootInTree[0].Depth);
     }
 
     [Fact]
