@@ -12,6 +12,7 @@ public sealed class OrcaConfig
     public HooksConfig Hooks { get; set; } = new();
     public MemoryConfig Memory { get; set; } = new();
     public ThinkingConfig Thinking { get; set; } = new();
+    public ShellConfig Shell { get; set; } = new();
     public Dictionary<string, McpServerConfig> McpServers { get; set; } = [];
 
     /// <summary>
@@ -132,6 +133,15 @@ public sealed class ThinkingConfig
     /// Default visibility of thinking output on startup.
     /// </summary>
     public bool DefaultVisible { get; set; }
+}
+
+public sealed class ShellConfig
+{
+    /// <summary>
+    /// Abort bash commands that produce no stdout for this many seconds.
+    /// Suggests start_background_process instead. 0 = disabled. Default: 15.
+    /// </summary>
+    public int IdleTimeoutSeconds { get; set; } = 15;
 }
 
 public sealed class McpServerConfig
