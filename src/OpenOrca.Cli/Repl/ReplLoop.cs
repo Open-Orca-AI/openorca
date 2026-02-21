@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
+using OpenOrca.Cli.Serialization;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Session;
@@ -111,14 +113,13 @@ public sealed class ReplLoop
 
         await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
 
-        var result = new
+        var result = new SinglePromptResult
         {
-            response = _state.LastAssistantResponse ?? "",
-            tokens = _state.TotalOutputTokens
+            Response = _state.LastAssistantResponse ?? "",
+            Tokens = _state.TotalOutputTokens
         };
 
-        // Write JSON to stdout (using System.Text.Json which is already imported in the project)
-        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
+        Console.WriteLine(JsonSerializer.Serialize(result, OrcaCliJsonContext.Default.SinglePromptResult));
     }
 
     /// <summary>

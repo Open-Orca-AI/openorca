@@ -5,6 +5,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Core.Chat;
+using OpenOrca.Core.Serialization;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Registry;
 
@@ -74,7 +75,7 @@ internal sealed class ToolCallExecutor
             var call = functionCalls[i];
             var toolName = call.Name;
             var args = call.Arguments is not null
-                ? JsonSerializer.Serialize(call.Arguments)
+                ? JsonSerializer.Serialize(call.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                 : "{}";
 
             _logger.LogDebug("Preparing native tool: {Name} (callId: {Id}) args: {Args}",
@@ -182,7 +183,7 @@ internal sealed class ToolCallExecutor
             var call = functionCalls[i];
             var toolName = call.Name;
             var args = call.Arguments is not null
-                ? JsonSerializer.Serialize(call.Arguments)
+                ? JsonSerializer.Serialize(call.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                 : "{}";
 
             _logger.LogDebug("Preparing text-parsed tool: {Name} args: {Args}",

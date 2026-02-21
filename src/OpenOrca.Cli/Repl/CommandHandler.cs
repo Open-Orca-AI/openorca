@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 using OpenOrca.Core.Session;
 using Spectre.Console;
 
@@ -921,7 +922,7 @@ internal sealed class CommandHandler
                     if (fc.Arguments is not null)
                     {
                         lines.Add("```json");
-                        lines.Add(JsonSerializer.Serialize(fc.Arguments, new JsonSerializerOptions { WriteIndented = true }));
+                        lines.Add(JsonSerializer.Serialize(fc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject));
                         lines.Add("```");
                     }
                 }

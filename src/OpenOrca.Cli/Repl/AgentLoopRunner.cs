@@ -3,8 +3,10 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
+using OpenOrca.Cli.Serialization;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 using Spectre.Console;
 
 namespace OpenOrca.Cli.Repl;
@@ -480,7 +482,7 @@ internal sealed class AgentLoopRunner
                             _logger.LogInformation("Text-parsed tool call: {Name} args: {Args}",
                                 pc.Name,
                                 pc.Arguments is not null
-                                    ? JsonSerializer.Serialize(pc.Arguments)
+                                    ? JsonSerializer.Serialize(pc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                                     : "{}");
                         }
                     }
@@ -671,22 +673,22 @@ internal sealed class AgentLoopRunner
         {
             _logger.LogDebug("Probing server with raw HTTP request for error details...");
 
-            var msgArray = messages.Select(m => new
+            var msgArray = messages.Select(m => new ProbeMessage
             {
-                role = m.Role.Value,
-                content = string.Join("", m.Contents.OfType<TextContent>().Select(t => t.Text))
-            });
+                Role = m.Role.Value,
+                Content = string.Join("", m.Contents.OfType<TextContent>().Select(t => t.Text))
+            }).ToArray();
 
-            var payload = new
+            var payload = new ProbePayload
             {
-                model = options.ModelId ?? _config.LmStudio.Model ?? "default",
-                messages = msgArray,
-                max_tokens = options.MaxOutputTokens ?? 50,
-                temperature = options.Temperature ?? 0.7f,
-                stream = false
+                Model = options.ModelId ?? _config.LmStudio.Model ?? "default",
+                Messages = msgArray,
+                MaxTokens = options.MaxOutputTokens ?? 50,
+                Temperature = options.Temperature ?? 0.7f,
+                Stream = false
             };
 
-            var json = JsonSerializer.Serialize(payload);
+            var json = JsonSerializer.Serialize(payload, OrcaCliJsonContext.Default.ProbePayload);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             using var request = new HttpRequestMessage(HttpMethod.Post,
                 $"{_config.LmStudio.BaseUrl.TrimEnd('/')}/chat/completions");
