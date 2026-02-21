@@ -18,6 +18,7 @@ using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Agent;
 using OpenOrca.Tools.Interactive;
 using OpenOrca.Tools.Registry;
+using OpenOrca.Tools.Shell;
 using Spectre.Console;
 
 // UTF-8 output encoding — prevents U+2022 (•) from encoding as 0x07 (BEL) in CP437
@@ -154,6 +155,10 @@ await promptManager.EnsureDefaultPromptAsync();
 // Discover and register tools
 var toolRegistry = host.Services.GetRequiredService<ToolRegistry>();
 toolRegistry.DiscoverTools(typeof(ToolRegistry).Assembly);
+
+// Wire shell config into BashTool
+if (toolRegistry.Resolve("bash") is BashTool bashTool)
+    bashTool.IdleTimeoutSeconds = config.Shell.IdleTimeoutSeconds;
 
 // Initialize MCP servers (if configured)
 OpenOrca.Core.Mcp.McpManager? mcpManager = null;

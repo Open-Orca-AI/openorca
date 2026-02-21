@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using OpenOrca.Tools.FileSystem;
 using OpenOrca.Tools.Shell;
@@ -82,6 +83,94 @@ public class ShellToolTests
         Assert.Contains("line1", result.Content);
         Assert.Contains("line2", result.Content);
         Assert.Contains("line3", result.Content);
+    }
+
+    // ── BashTool Idle Timeout ──
+
+    [Fact]
+    public async Task BashTool_IdleTimeout_FiresWhenNoStdout()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 2 };
+        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1 > nul" : "sleep 30";
+        var args = MakeArgs($"{{\"command\": \"{command}\"}}");
+
+        var sw = Stopwatch.StartNew();
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+        sw.Stop();
+
+        Assert.True(result.IsError);
+        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("start_background_process", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Should abort quickly, took {sw.Elapsed.TotalSeconds:F1}s");
+    }
+
+    [Fact]
+    public async Task BashTool_IdleTimeout_ResetsOnActivity()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 3 };
+        // Echo, sleep (less than idle timeout), echo again — should succeed
+        var command = OperatingSystem.IsWindows()
+            ? "echo first && ping -n 3 127.0.0.1 > nul && echo second"
+            : "echo first; sleep 2; echo second";
+        var args = MakeArgs($"{{\"command\": \"{command}\"}}");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
+        Assert.Contains("first", result.Content);
+        Assert.Contains("second", result.Content);
+    }
+
+    [Fact]
+    public async Task BashTool_IdleTimeout_DisabledWhenZero()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 0 };
+        // Sleep 3s then echo — with idle disabled, should succeed
+        var command = OperatingSystem.IsWindows()
+            ? "ping -n 4 127.0.0.1 > nul && echo done"
+            : "sleep 3; echo done";
+        var args = MakeArgs($"{{\"command\": \"{command}\", \"timeout_seconds\": 10}}");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
+        Assert.Contains("done", result.Content);
+    }
+
+    [Fact]
+    public async Task BashTool_IdleTimeout_PerCallOverride()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 60 };
+        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1 > nul" : "sleep 30";
+        // Override to 2s via parameter
+        var args = MakeArgs($"{{\"command\": \"{command}\", \"idle_timeout_seconds\": 2}}");
+
+        var sw = Stopwatch.StartNew();
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+        sw.Stop();
+
+        Assert.True(result.IsError);
+        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Per-call override should fire quickly, took {sw.Elapsed.TotalSeconds:F1}s");
+    }
+
+    [Fact]
+    public async Task BashTool_IdleTimeout_StderrDoesNotReset()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 2 };
+        // Write to stderr only, then sleep — idle timer should still fire
+        var command = OperatingSystem.IsWindows()
+            ? "echo stderr_only 1>&2 && ping -n 30 127.0.0.1 > nul"
+            : "echo stderr_only >&2; sleep 30";
+        var args = MakeArgs($"{{\"command\": \"{command}\"}}");
+
+        var sw = Stopwatch.StartNew();
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+        sw.Stop();
+
+        Assert.True(result.IsError);
+        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Stderr should not reset idle, took {sw.Elapsed.TotalSeconds:F1}s");
     }
 
     // ── CdTool ──

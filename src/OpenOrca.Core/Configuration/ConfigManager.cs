@@ -41,6 +41,8 @@ public sealed class ConfigManager
             Config.Agent.MaxIterations = 15;
         if (Config.Agent.TimeoutSeconds <= 0)
             Config.Agent.TimeoutSeconds = 300;
+        if (Config.Shell.IdleTimeoutSeconds < 0)
+            Config.Shell.IdleTimeoutSeconds = 15;
     }
 
     public async Task SaveAsync()
