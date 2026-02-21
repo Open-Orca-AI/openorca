@@ -10,7 +10,7 @@ public sealed class BashTool : IOrcaTool
     public ILogger? Logger { get; set; }
 
     public string Name => "bash";
-    public string Description => "Execute a shell command and return its output. Uses cmd.exe on Windows and /bin/bash on Unix. Supports working directory and timeout (default 120s). Output is truncated at 30,000 chars. Use for builds, tests, scripts, installs, and any system command.";
+    public string Description => "Execute a shell command and return its output. Uses cmd.exe on Windows and /bin/bash on Unix. Supports working directory and timeout (default 120s). Output is truncated at 30,000 chars. Use for builds, tests, scripts, installs, and short-lived system commands. Do NOT use for servers, watchers, REPLs, or interactive programs — use start_background_process instead.";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.Dangerous;
 
     public JsonElement ParameterSchema => JsonDocument.Parse("""
@@ -83,10 +83,15 @@ public sealed class BashTool : IOrcaTool
             {
                 await process.WaitForExitAsync(timeoutCts.Token);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-                return ToolResult.Error($"Command timed out after {timeoutSec} seconds.");
+
+                if (ct.IsCancellationRequested)
+                    return ToolResult.Error("Command cancelled by user.");
+
+                return ToolResult.Error($"Command timed out after {timeoutSec} seconds. " +
+                    "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.");
             }
 
             var output = await outputTask;

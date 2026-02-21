@@ -111,8 +111,8 @@ internal static class PromptConstants
         RULES FOR TOOL CALLS:
         - <tool_call> tags MUST appear in your response text, OUTSIDE of <think> blocks.
         - If you use <think>...</think> for reasoning, put your <tool_call> tags AFTER </think>.
-        - You may call multiple tools by including multiple <tool_call> blocks.
-        - After each tool call, you will receive the result and can make further calls.
+        - You may call multiple tools by including multiple <tool_call> blocks in a single response. When tools are independent, include them all at once for parallel execution.
+        - After all tool results are returned, you can make further calls if needed.
         - NEVER just show code — use write_file to create files, bash to run commands.
         - Every response where you need to act MUST contain at least one <tool_call>.
         """;

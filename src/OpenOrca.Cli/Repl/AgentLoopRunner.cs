@@ -125,9 +125,12 @@ internal sealed class AgentLoopRunner
 
             // Capture the real stdout so the ThinkingIndicator can write to it
             var realStdout = Console.Out;
+            _toolCallExecutor.RealStdout = realStdout;
 
             using var thinking = new ThinkingIndicator(realStdout);
+            var thinkFilter = new ThinkTagFilter();
             var firstToken = true;
+            var firstResponseToken = true;
             var thinkingVisible = _state.ShowThinking;
             var consoleRedirected = false;
             var textParts = new List<string>();
@@ -168,14 +171,21 @@ internal sealed class AgentLoopRunner
                                 thinking.Stop();
                                 RestoreConsole();
                                 Console.Write("\x1b[36m");
+                                // If we're in the thinking phase, flush accumulated thinking text
+                                if (!thinkFilter.InResponsePhase && thinkFilter.AccumulatedThinking.Length > 0)
+                                {
+                                    Console.Write(thinkFilter.AccumulatedThinking);
+                                }
                                 Console.Write(string.Join("", textParts));
                             }
-                            else
+                            else if (!thinkFilter.InResponsePhase)
                             {
+                                // Toggled to hidden during thinking — redirect
                                 _streamingRenderer.Finish();
                                 Console.Write("\x1b[0m\r\x1b[K");
                                 RedirectConsole();
                             }
+                            // If toggled to hidden during response phase, ignore — response stays visible
                         }
                         else
                         {
@@ -235,10 +245,32 @@ internal sealed class AgentLoopRunner
                         {
                             tokenCount++;
                             textParts.Add(textContent.Text);
+
                             if (thinkingVisible)
+                            {
                                 _streamingRenderer.AppendToken(textContent.Text);
+                            }
                             else
-                                thinking.UpdateTokenCount(tokenCount);
+                            {
+                                // Use ThinkTagFilter to separate thinking from response
+                                var (thinkText, responseText) = thinkFilter.Process(textContent.Text);
+
+                                if (thinkText.Length > 0)
+                                    thinking.UpdateTokenCount(tokenCount);
+
+                                if (responseText.Length > 0)
+                                {
+                                    if (firstResponseToken)
+                                    {
+                                        // First response token — stop thinking indicator, show response
+                                        thinking.Stop();
+                                        RestoreConsole();
+                                        Console.Write("\x1b[36m");
+                                        firstResponseToken = false;
+                                    }
+                                    _streamingRenderer.AppendToken(responseText);
+                                }
+                            }
                         }
                         else if (content is FunctionCallContent fcc)
                         {
@@ -310,8 +342,30 @@ internal sealed class AgentLoopRunner
                             {
                                 tokenCount++;
                                 textParts.Add(tc.Text);
-                                if (thinkingVisible) _streamingRenderer.AppendToken(tc.Text);
-                                else thinking.UpdateTokenCount(tokenCount);
+
+                                if (thinkingVisible)
+                                {
+                                    _streamingRenderer.AppendToken(tc.Text);
+                                }
+                                else
+                                {
+                                    var (thinkText, responseText) = thinkFilter.Process(tc.Text);
+
+                                    if (thinkText.Length > 0)
+                                        thinking.UpdateTokenCount(tokenCount);
+
+                                    if (responseText.Length > 0)
+                                    {
+                                        if (firstResponseToken)
+                                        {
+                                            thinking.Stop();
+                                            RestoreConsole();
+                                            Console.Write("\x1b[36m");
+                                            firstResponseToken = false;
+                                        }
+                                        _streamingRenderer.AppendToken(responseText);
+                                    }
+                                }
                             }
                             allContents.Add(content);
                         }
@@ -360,8 +414,15 @@ internal sealed class AgentLoopRunner
                     _streamingRenderer.Finish();
                     Console.Write("\x1b[0m");
                 }
+                else if (!firstResponseToken)
+                {
+                    // Response tokens were streamed visibly — finish the output
+                    _streamingRenderer.Finish();
+                    Console.Write("\x1b[0m");
+                }
                 else
                 {
+                    // No response tokens were shown (pure thinking or empty)
                     thinking.Stop();
                     if (fullText.Length > 0)
                     {
