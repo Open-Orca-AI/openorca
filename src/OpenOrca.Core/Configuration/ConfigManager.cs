@@ -1,5 +1,5 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Configuration;
 
@@ -9,13 +9,6 @@ public sealed class ConfigManager
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".openorca");
 
     private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.json");
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
 
     public OrcaConfig Config { get; private set; } = new();
 
@@ -28,7 +21,7 @@ public sealed class ConfigManager
         }
 
         var json = await File.ReadAllTextAsync(ConfigPath);
-        Config = JsonSerializer.Deserialize<OrcaConfig>(json, JsonOptions) ?? new OrcaConfig();
+        Config = JsonSerializer.Deserialize(json, OrcaJsonContext.Default.OrcaConfig) ?? new OrcaConfig();
         ValidateConfig();
     }
 
@@ -53,7 +46,7 @@ public sealed class ConfigManager
     public async Task SaveAsync()
     {
         Directory.CreateDirectory(ConfigDir);
-        var json = JsonSerializer.Serialize(Config, JsonOptions);
+        var json = JsonSerializer.Serialize(Config, OrcaJsonContext.Default.OrcaConfig);
         await File.WriteAllTextAsync(ConfigPath, json);
     }
 
