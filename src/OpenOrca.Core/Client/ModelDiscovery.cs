@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Client;
 
@@ -38,7 +39,7 @@ public sealed class ModelDiscovery
             request.Headers.Add("Authorization", $"Bearer {_config.LmStudio.ApiKey}");
             using var httpResponse = await SharedHttpClient.SendAsync(request, ct);
             httpResponse.EnsureSuccessStatusCode();
-            var response = await httpResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
+            var response = await httpResponse.Content.ReadFromJsonAsync(OrcaJsonContext.Default.JsonElement, ct);
 
             if (response.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
             {

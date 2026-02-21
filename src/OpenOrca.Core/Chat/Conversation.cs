@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Chat;
 
@@ -79,7 +80,7 @@ public sealed class Conversation
                     case FunctionCallContent fc:
                         toolChars += fc.Name?.Length ?? 0;
                         if (fc.Arguments is not null)
-                            toolChars += JsonSerializer.Serialize(fc.Arguments).Length;
+                            toolChars += JsonSerializer.Serialize(fc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject).Length;
                         break;
                     case FunctionResultContent fr:
                         toolChars += fr.Result?.ToString()?.Length ?? 0;

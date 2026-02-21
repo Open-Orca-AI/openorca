@@ -1,9 +1,9 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Session;
 
@@ -11,13 +11,6 @@ public sealed class SessionManager
 {
     private static readonly string SessionDir = Path.Combine(
         ConfigManager.GetConfigDirectory(), "sessions");
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
 
     private readonly OrcaConfig _config;
     private readonly ILogger<SessionManager> _logger;
@@ -38,7 +31,7 @@ public sealed class SessionManager
         session.WorkingDirectory = Directory.GetCurrentDirectory();
 
         var path = GetSessionPath(session.Id);
-        var json = JsonSerializer.Serialize(session, JsonOptions);
+        var json = JsonSerializer.Serialize(session, OrcaJsonContext.Default.SessionData);
         await File.WriteAllTextAsync(path, json);
 
         _logger.LogInformation("Session saved: {Id} ({Title})", session.Id, session.Title);
@@ -52,7 +45,7 @@ public sealed class SessionManager
             return null;
 
         var json = await File.ReadAllTextAsync(path);
-        return JsonSerializer.Deserialize<SessionData>(json, JsonOptions);
+        return JsonSerializer.Deserialize(json, OrcaJsonContext.Default.SessionData);
     }
 
     public Conversation SessionToConversation(SessionData session)
@@ -85,7 +78,7 @@ public sealed class SessionManager
                     {
                         try
                         {
-                            args = JsonSerializer.Deserialize<Dictionary<string, object?>>(tc.Arguments, JsonOptions);
+                            args = JsonSerializer.Deserialize(tc.Arguments, OrcaJsonContext.Default.DictionaryStringObject);
                         }
                         catch (Exception ex)
                         {
@@ -125,7 +118,7 @@ public sealed class SessionManager
             try
             {
                 var json = File.ReadAllText(file);
-                var session = JsonSerializer.Deserialize<SessionData>(json, JsonOptions);
+                var session = JsonSerializer.Deserialize(json, OrcaJsonContext.Default.SessionData);
                 if (session is not null)
                     sessions.Add(session);
             }
@@ -173,7 +166,7 @@ public sealed class SessionManager
                     CallId = tc.CallId,
                     Name = tc.Name,
                     Arguments = tc.Arguments is not null
-                        ? JsonSerializer.Serialize(tc.Arguments)
+                        ? JsonSerializer.Serialize(tc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                         : null
                 }).ToList();
             }

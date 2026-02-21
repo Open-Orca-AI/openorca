@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Orchestration;
 
@@ -125,7 +126,7 @@ public sealed class AgentOrchestrator
                 {
                     var toolName = call.Name;
                     var args = call.Arguments is not null
-                        ? JsonSerializer.Serialize(call.Arguments)
+                        ? JsonSerializer.Serialize(call.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                         : "{}";
 
                     string result;
