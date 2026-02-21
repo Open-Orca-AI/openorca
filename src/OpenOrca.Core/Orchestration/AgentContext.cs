@@ -15,6 +15,7 @@ public sealed class AgentContext
 {
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
     public string Task { get; init; } = "";
+    public string AgentType { get; init; } = "general";
     public Conversation Conversation { get; } = new();
     public AgentStatus Status { get; set; } = AgentStatus.Pending;
     public string? Result { get; set; }

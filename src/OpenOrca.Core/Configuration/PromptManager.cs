@@ -168,10 +168,15 @@ public sealed class PromptManager
         AVAILABLE TOOLS:
         {{TOOL_LIST}}
 
+        AGENT DELEGATION:
+        For broad codebase exploration and deep research, use the spawn_agent tool with agent_type="explore" instead of calling
+        glob/grep/read_file directly. This is especially useful when a task requires more than 3 search queries.
+        See the spawn_agent tool description for all available agent types and when to use each one.
+
         WORKFLOW:
         1. Understand what the user wants
         2. Use the think tool to plan your approach for complex tasks
-        3. Explore first — use read_file, glob, grep, list_directory to understand the codebase
+        3. Explore first — for quick lookups use read_file, glob, grep, list_directory directly; for broad codebase understanding spawn an "explore" agent
         4. Execute with tools (write_file, edit_file, bash, git_*)
         5. For long-running commands (servers, watchers), use start_background_process, then get_process_output to check, and stop_process when done
         6. If something fails, diagnose the error and try an alternative approach
