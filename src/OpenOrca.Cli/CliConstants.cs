@@ -10,6 +10,7 @@ internal static class CliConstants
     public const int HookExecutionTimeoutSeconds = 30;
     public const int HttpProbeTimeoutSeconds = 15;
     public const int StreamingIdleTimeoutSeconds = 120;
+    public const int ToolExecutionTimeoutSeconds = 120;
     public const int AgentMaxIterations = 25;
 
     // Truncation limits (characters)
@@ -25,4 +26,7 @@ internal static class CliConstants
 
     // Tool defaults
     public const int DefaultMaxSearchResults = 500;
+
+    // Parallel tool execution
+    public const int MaxParallelToolCalls = 8;
 }

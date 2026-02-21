@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -10,7 +12,7 @@ namespace OpenOrca.Cli.Repl;
 
 /// <summary>
 /// Executes tool calls (both native and text-parsed) with plan mode enforcement,
-/// retry detection, and conversation state management.
+/// retry detection, parallel execution, and conversation state management.
 /// </summary>
 internal sealed class ToolCallExecutor
 {
@@ -18,10 +20,16 @@ internal sealed class ToolCallExecutor
     private readonly ToolCallRenderer _toolCallRenderer;
     private readonly ReplState _state;
     private readonly ILogger _logger;
-    private readonly Dictionary<string, (string Error, int Count)> _recentToolErrors = new();
+    private readonly ConcurrentDictionary<string, (string Error, int Count)> _recentToolErrors = new();
 
     public Func<string, string, CancellationToken, Task<string>>? ToolExecutor { get; set; }
     public IList<AITool>? Tools { get; set; }
+
+    /// <summary>
+    /// Set by AgentLoopRunner to the real stdout so the progress indicator can render
+    /// even when Console.Out is redirected.
+    /// </summary>
+    public TextWriter? RealStdout { get; set; }
 
     public ToolCallExecutor(
         ToolRegistry toolRegistry,
@@ -48,85 +56,116 @@ internal sealed class ToolCallExecutor
     }
 
     /// <summary>
-    /// Execute native tool calls and add results to conversation using FunctionResultContent.
+    /// Execute native tool calls in parallel and add results to conversation using FunctionResultContent.
+    /// Uses a 3-phase pattern: validate & render, execute in parallel, render results & commit.
     /// </summary>
     public async Task ExecuteToolCallsAsync(
         List<FunctionCallContent> functionCalls,
         Conversation conversation,
         CancellationToken ct)
     {
-        foreach (var call in functionCalls)
+        const int maxArgsLength = 1_000_000; // 1MB
+
+        // Phase 1 — Validate & render tool calls (sequential)
+        var callData = new (string ToolName, string Args, FunctionCallContent Call, string? PreResult, bool PreError)[functionCalls.Count];
+
+        for (int i = 0; i < functionCalls.Count; i++)
         {
+            var call = functionCalls[i];
             var toolName = call.Name;
             var args = call.Arguments is not null
                 ? JsonSerializer.Serialize(call.Arguments)
                 : "{}";
 
-            _logger.LogDebug("Executing native tool: {Name} (callId: {Id}) args: {Args}",
+            _logger.LogDebug("Preparing native tool: {Name} (callId: {Id}) args: {Args}",
                 toolName, call.CallId, args.Length > 200 ? args[..200] + "..." : args);
 
-            // Validate input size to prevent memory exhaustion from malicious models
-            const int maxArgsLength = 1_000_000; // 1MB
+            string? preResult = null;
+            bool preError = false;
+
+            // Validate input size
             if (args.Length > maxArgsLength)
             {
-                var errorResult = $"Error: Tool arguments exceed maximum size ({args.Length} chars, limit {maxArgsLength}).";
-                _toolCallRenderer.RenderToolResult(toolName, errorResult, isError: true);
+                preResult = $"Error: Tool arguments exceed maximum size ({args.Length} chars, limit {maxArgsLength}).";
+                preError = true;
+                _toolCallRenderer.RenderToolResult(toolName, preResult, isError: true);
+            }
+            // Block write/execute tools in plan mode
+            else if (_state.PlanMode && !IsToolAllowedInPlanMode(toolName))
+            {
+                var orcaTool = _toolRegistry.Resolve(toolName);
+                var risk = orcaTool?.RiskLevel.ToString() ?? "Unknown";
+                preResult = $"PLAN MODE: Tool '{toolName}' is blocked in plan mode (risk: {risk}). " +
+                            "Describe what you would do with this tool in your plan text instead.";
+                preError = true;
+                _toolCallRenderer.RenderPlanToolBlocked(toolName, risk);
+                _logger.LogInformation("Blocked tool {Name} in plan mode (risk: {Risk})", toolName, risk);
+            }
+            else
+            {
+                _toolCallRenderer.RenderToolCall(toolName, args);
+            }
+
+            callData[i] = (toolName, args, call, preResult, preError);
+        }
+
+        // Phase 2 — Execute in parallel (only calls that weren't pre-resolved)
+        var results = new (string Result, bool IsError, TimeSpan Elapsed)[functionCalls.Count];
+        var semaphore = new SemaphoreSlim(CliConstants.MaxParallelToolCalls);
+
+        // Start progress indicator for tools that need execution
+        var toolsToExecute = callData.Where(d => d.PreResult is null).Select(d => d.ToolName).ToList();
+        using var progress = RealStdout is not null && toolsToExecute.Count > 0
+            ? new ToolProgressIndicator(RealStdout, toolsToExecute)
+            : null;
+
+        var tasks = new List<Task>();
+        for (int i = 0; i < callData.Length; i++)
+        {
+            var (toolName, args, call, preResult, preError) = callData[i];
+            if (preResult is not null)
+            {
+                results[i] = (preResult, preError, TimeSpan.Zero);
+                continue;
+            }
+
+            int index = i; // capture for closure
+            tasks.Add(ExecuteSingleToolAsync(index, toolName, args, results, semaphore, progress, ct));
+        }
+
+        await Task.WhenAll(tasks);
+        progress?.Stop();
+
+        // If user cancelled during execution, skip Phase 3 — don't commit partial results
+        ct.ThrowIfCancellationRequested();
+
+        // Phase 3 — Render results & commit to conversation (sequential, in original order)
+        for (int i = 0; i < callData.Length; i++)
+        {
+            var (toolName, args, call, preResult, _) = callData[i];
+            var (result, isError, elapsed) = results[i];
+
+            // Pre-resolved calls already rendered in Phase 1, just commit to conversation
+            if (preResult is not null)
+            {
                 var errMsg = new ChatMessage(ChatRole.Tool, "");
-                errMsg.Contents.Add(new FunctionResultContent(call.CallId, errorResult));
+                errMsg.Contents.Add(new FunctionResultContent(call.CallId, result));
                 conversation.AddMessage(errMsg);
                 continue;
             }
 
-            _toolCallRenderer.RenderToolCall(toolName, args);
-
-            string result;
-            bool isError = false;
-
-            // Block write/execute tools in plan mode
-            if (_state.PlanMode && !IsToolAllowedInPlanMode(toolName))
-            {
-                var orcaTool = _toolRegistry.Resolve(toolName);
-                var risk = orcaTool?.RiskLevel.ToString() ?? "Unknown";
-                result = $"PLAN MODE: Tool '{toolName}' is blocked in plan mode (risk: {risk}). " +
-                         "Describe what you would do with this tool in your plan text instead.";
-                isError = true;
-                _toolCallRenderer.RenderPlanToolBlocked(toolName, risk);
-                _logger.LogInformation("Blocked tool {Name} in plan mode (risk: {Risk})", toolName, risk);
-            }
-            else if (ToolExecutor is not null)
-            {
-                try
-                {
-                    result = await ToolExecutor(toolName, args, ct);
-                    _logger.LogDebug("Tool {Name} returned {Len} chars", toolName, result.Length);
-                }
-                catch (Exception ex)
-                {
-                    result = $"Error: {ex.Message}";
-                    isError = true;
-                    _logger.LogWarning(ex, "Tool {Name} threw exception", toolName);
-                }
-            }
-            else
-            {
-                result = "Tool execution not available.";
-                isError = true;
-                _logger.LogWarning("Tool executor not set — cannot execute {Name}", toolName);
-            }
-
             result = ApplyRetryDetection(toolName, args, result);
-            _toolCallRenderer.RenderToolResult(toolName, result, isError);
+            _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
 
             var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
-            toolResultMessage.Contents.Add(new FunctionResultContent(
-                call.CallId, result));
+            toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
             conversation.AddMessage(toolResultMessage);
             _logger.LogDebug("Added tool result message to conversation (callId: {Id})", call.CallId);
         }
     }
 
     /// <summary>
-    /// Execute tool calls that were parsed from the LLM's text output.
+    /// Execute tool calls that were parsed from the LLM's text output, in parallel.
     /// Results are injected as a user message (not formal tool protocol) so the
     /// conversation stays valid for local models that don't support function calling natively.
     /// </summary>
@@ -135,58 +174,86 @@ internal sealed class ToolCallExecutor
         Conversation conversation,
         CancellationToken ct)
     {
-        var resultParts = new List<string>();
+        // Phase 1 — Validate & render tool calls (sequential)
+        var callData = new (string ToolName, string Args, string? PreResult, bool PreError)[functionCalls.Count];
 
-        foreach (var call in functionCalls)
+        for (int i = 0; i < functionCalls.Count; i++)
         {
+            var call = functionCalls[i];
             var toolName = call.Name;
             var args = call.Arguments is not null
                 ? JsonSerializer.Serialize(call.Arguments)
                 : "{}";
 
-            _logger.LogDebug("Executing text-parsed tool: {Name} args: {Args}",
+            _logger.LogDebug("Preparing text-parsed tool: {Name} args: {Args}",
                 toolName, args.Length > 200 ? args[..200] + "..." : args);
 
-            _toolCallRenderer.RenderToolCall(toolName, args);
-
-            string result;
-            bool isError = false;
+            string? preResult = null;
+            bool preError = false;
 
             // Block write/execute tools in plan mode
             if (_state.PlanMode && !IsToolAllowedInPlanMode(toolName))
             {
                 var orcaTool = _toolRegistry.Resolve(toolName);
                 var risk = orcaTool?.RiskLevel.ToString() ?? "Unknown";
-                result = $"PLAN MODE: Tool '{toolName}' is blocked in plan mode (risk: {risk}). " +
-                         "Describe what you would do with this tool in your plan text instead.";
-                isError = true;
+                preResult = $"PLAN MODE: Tool '{toolName}' is blocked in plan mode (risk: {risk}). " +
+                            "Describe what you would do with this tool in your plan text instead.";
+                preError = true;
                 _toolCallRenderer.RenderPlanToolBlocked(toolName, risk);
                 _logger.LogInformation("Blocked text-parsed tool {Name} in plan mode (risk: {Risk})", toolName, risk);
             }
-            else if (ToolExecutor is not null)
-            {
-                try
-                {
-                    result = await ToolExecutor(toolName, args, ct);
-                    _logger.LogDebug("Text-parsed tool {Name} returned {Len} chars", toolName, result.Length);
-                }
-                catch (Exception ex)
-                {
-                    result = $"Error: {ex.Message}";
-                    isError = true;
-                    _logger.LogWarning(ex, "Text-parsed tool {Name} threw exception", toolName);
-                }
-            }
             else
             {
-                result = "Tool execution not available.";
-                isError = true;
-                _logger.LogWarning("Tool executor not set — cannot execute {Name}", toolName);
+                _toolCallRenderer.RenderToolCall(toolName, args);
             }
 
-            result = ApplyRetryDetection(toolName, args, result);
-            _toolCallRenderer.RenderToolResult(toolName, result, isError);
+            callData[i] = (toolName, args, preResult, preError);
+        }
 
+        // Phase 2 — Execute in parallel (only calls that weren't pre-resolved)
+        var results = new (string Result, bool IsError, TimeSpan Elapsed)[functionCalls.Count];
+        var semaphore = new SemaphoreSlim(CliConstants.MaxParallelToolCalls);
+
+        // Start progress indicator for tools that need execution
+        var toolsToExecute = callData.Where(d => d.PreResult is null).Select(d => d.ToolName).ToList();
+        using var progress = RealStdout is not null && toolsToExecute.Count > 0
+            ? new ToolProgressIndicator(RealStdout, toolsToExecute)
+            : null;
+
+        var tasks = new List<Task>();
+        for (int i = 0; i < callData.Length; i++)
+        {
+            var (toolName, args, preResult, preError) = callData[i];
+            if (preResult is not null)
+            {
+                results[i] = (preResult, preError, TimeSpan.Zero);
+                continue;
+            }
+
+            int index = i;
+            tasks.Add(ExecuteSingleToolAsync(index, toolName, args, results, semaphore, progress, ct));
+        }
+
+        await Task.WhenAll(tasks);
+        progress?.Stop();
+
+        // If user cancelled during execution, skip Phase 3 — don't commit partial results
+        ct.ThrowIfCancellationRequested();
+
+        // Phase 3 — Render results & commit to conversation (sequential, in original order)
+        var resultParts = new List<string>();
+
+        for (int i = 0; i < callData.Length; i++)
+        {
+            var (toolName, args, preResult, _) = callData[i];
+            var (result, isError, elapsed) = results[i];
+
+            if (preResult is null)
+            {
+                result = ApplyRetryDetection(toolName, args, result);
+            }
+
+            _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
             resultParts.Add($"[Tool result for {toolName}]\n{result}");
         }
 
@@ -195,6 +262,71 @@ internal sealed class ToolCallExecutor
         var injectedMessage = $"Here are the results of the tool calls you made:\n\n{combined}\n\nContinue with the task based on these results. If you need to use more tools, use <tool_call> tags.";
         conversation.AddUserMessage(injectedMessage);
         _logger.LogDebug("Injected tool results as user message ({Len} chars)", injectedMessage.Length);
+    }
+
+    /// <summary>
+    /// Execute a single tool with semaphore throttling and a global timeout safety net.
+    /// Writes result to the shared results array.
+    /// </summary>
+    private async Task ExecuteSingleToolAsync(
+        int index,
+        string toolName,
+        string args,
+        (string Result, bool IsError, TimeSpan Elapsed)[] results,
+        SemaphoreSlim semaphore,
+        ToolProgressIndicator? progress,
+        CancellationToken ct)
+    {
+        await semaphore.WaitAsync(ct);
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            if (ToolExecutor is not null)
+            {
+                // Create a linked CTS: fires on user cancellation OR global tool timeout
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(CliConstants.ToolExecutionTimeoutSeconds));
+
+                try
+                {
+                    var result = await ToolExecutor(toolName, args, timeoutCts.Token);
+                    sw.Stop();
+                    _logger.LogDebug("Tool {Name} returned {Len} chars in {Elapsed:F1}s", toolName, result.Length, sw.Elapsed.TotalSeconds);
+                    results[index] = (result, false, sw.Elapsed);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    sw.Stop();
+                    // Timeout fired but user didn't cancel — this is a tool timeout
+                    _logger.LogWarning("Tool {Name} timed out after {Timeout}s",
+                        toolName, CliConstants.ToolExecutionTimeoutSeconds);
+                    results[index] = ($"Error: Tool '{toolName}' timed out after {CliConstants.ToolExecutionTimeoutSeconds} seconds. " +
+                        "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.", true, sw.Elapsed);
+                }
+                catch (OperationCanceledException)
+                {
+                    // User cancelled — propagate
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    results[index] = ($"Error: {ex.Message}", true, sw.Elapsed);
+                    _logger.LogWarning(ex, "Tool {Name} threw exception", toolName);
+                }
+            }
+            else
+            {
+                sw.Stop();
+                results[index] = ("Tool execution not available.", true, sw.Elapsed);
+                _logger.LogWarning("Tool executor not set — cannot execute {Name}", toolName);
+            }
+        }
+        finally
+        {
+            progress?.MarkCompleted(toolName);
+            semaphore.Release();
+        }
     }
 
     /// <summary>
@@ -265,26 +397,27 @@ internal sealed class ToolCallExecutor
 
         if (!result.StartsWith("ERROR:", StringComparison.Ordinal))
         {
-            _recentToolErrors.Remove(key);
+            _recentToolErrors.TryRemove(key, out _);
             return result;
         }
 
-        if (_recentToolErrors.TryGetValue(key, out var prev) && prev.Error == result)
+        var newEntry = _recentToolErrors.AddOrUpdate(
+            key,
+            _ => (result, 1),
+            (_, prev) => prev.Error == result ? (result, prev.Count + 1) : (result, 1));
+
+        if (newEntry.Count >= 3)
         {
-            var count = prev.Count + 1;
-            _recentToolErrors[key] = (result, count);
+            _logger.LogWarning("Tool {Name} has failed {Count} times with same error — forcing stop", toolName, newEntry.Count);
+            return $"STOP: This tool call has failed {newEntry.Count} times with the same error. You MUST use a different approach. Original error: {result}";
+        }
 
-            if (count >= 3)
-            {
-                _logger.LogWarning("Tool {Name} has failed {Count} times with same error — forcing stop", toolName, count);
-                return $"STOP: This tool call has failed {count} times with the same error. You MUST use a different approach. Original error: {result}";
-            }
-
-            _logger.LogWarning("Tool {Name} has failed {Count} times with same error — warning appended", toolName, count);
+        if (newEntry.Count >= 2)
+        {
+            _logger.LogWarning("Tool {Name} has failed {Count} times with same error — warning appended", toolName, newEntry.Count);
             return result + "\n\nWARNING: This tool call has failed 2 times with the same error. Do NOT retry with the same arguments. Try a different approach or tool.";
         }
 
-        _recentToolErrors[key] = (result, 1);
         return result;
     }
 }

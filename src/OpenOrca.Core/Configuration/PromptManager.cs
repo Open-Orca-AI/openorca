@@ -195,9 +195,10 @@ public sealed class PromptManager
             - When you need to understand code, USE read_file, glob, or grep to look at it. Do NOT guess.
             - ALWAYS take action with tools. NEVER just describe what you would do.
             - Your response MUST contain tool calls when action is needed. Text-only responses with no tool calls are WRONG.
-            - You can chain multiple tool calls in sequence to accomplish complex tasks.
+            - You can call multiple tools in a single response. When tools are independent (no output from one is needed as input to another), include them all at once for parallel execution.
             - After making changes, verify your work by reading back files or checking process output.
             - The write_file 'content' argument MUST contain the FULL file content (actual code/text). NEVER pass empty content or role tags.
+            - Do NOT use the bash tool to run programs that might run indefinitely (web servers, file watchers, REPLs, interactive apps). Use start_background_process for those, then check with get_process_output.
 
             ERROR HANDLING — THIS IS VERY IMPORTANT:
             When a tool call fails, DO NOT give up or ask the user to do it. Instead:
@@ -223,6 +224,7 @@ public sealed class PromptManager
             - If write_file can't create in one location, check if the parent directory exists and create it.
             - Decompose complex operations into smaller steps that are each more likely to succeed.
             - Commands run from CWD by default. Use full relative paths to files you created (e.g., 'python snake_game/snake.py' not 'python snake.py').
+            - NEVER run commands that might not terminate (servers, REPLs, watchers, GUIs, interactive programs) with the bash tool — use start_background_process instead. The bash tool has a timeout and will kill the process.
             """;
     }
 
@@ -273,8 +275,8 @@ public sealed class PromptManager
         After thinking, take action using your tools.
 
         RULES FOR TOOL CALLS:
-        - You may call multiple tools in sequence to accomplish complex tasks.
-        - After each tool call, you will receive the result and can make further calls.
+        - You may call multiple tools in a single response. When tools are independent, include them all at once for parallel execution.
+        - After all tool results are returned, you can make further calls if needed.
         - NEVER just show code — use write_file to create files, bash to run commands.
         - Every response where you need to act MUST contain at least one tool call.
         """;
@@ -335,8 +337,8 @@ public sealed class PromptManager
         RULES FOR TOOL CALLS:
         - <tool_call> tags MUST appear in your response text, OUTSIDE of <think> blocks.
         - If you use <think>...</think> for reasoning, put your <tool_call> tags AFTER </think>.
-        - You may call multiple tools by including multiple <tool_call> blocks.
-        - After each tool call, you will receive the result and can make further calls.
+        - You may call multiple tools by including multiple <tool_call> blocks in a single response. When tools are independent, include them all at once for parallel execution.
+        - After all tool results are returned, you can make further calls if needed.
         - NEVER just show code — use write_file to create files, bash to run commands.
         - Every response where you need to act MUST contain at least one <tool_call>.
         """;
@@ -362,8 +364,8 @@ public sealed class PromptManager
 
             RULES FOR TOOL CALLS:
             - Tool calls MUST appear OUTSIDE of <think> blocks.
-            - You may call multiple tools by including multiple JSON objects or <tool_call> blocks.
-            - After each tool call, you will receive the result and can make further calls.
+            - You may call multiple tools by including multiple JSON objects or <tool_call> blocks in a single response. When tools are independent, include them all at once for parallel execution.
+            - After all tool results are returned, you can make further calls if needed.
             - NEVER just show code — use write_file to create files, bash to run commands.
             - Every response where you need to act MUST contain at least one tool call.
             """;
