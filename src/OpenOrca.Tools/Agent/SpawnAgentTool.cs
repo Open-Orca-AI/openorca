@@ -13,7 +13,7 @@ public sealed class SpawnAgentTool : IOrcaTool
     private const string ToolDescription =
         "Launch a specialized sub-agent to handle a focused task autonomously with its own conversation context.\n" +
         "\n" +
-        "Available agent types:\n" +
+        "Built-in agent types:\n" +
         "- explore: Fast read-only codebase exploration specialist. Has access to: read_file, list_directory, glob, grep, think. " +
             "Use for finding files, searching code, understanding project structure, tracing usages, and answering questions about the codebase. " +
             "PREFER this over calling glob/grep/read_file directly when the task requires broad exploration or more than 3 search queries.\n" +
@@ -24,6 +24,8 @@ public sealed class SpawnAgentTool : IOrcaTool
         "- review: Code review and diff analysis. Has access to: read_file, list_directory, glob, grep, git_diff, git_log, git_status, think. " +
             "Use for examining changes, checking code quality, and reviewing diffs.\n" +
         "- general: Full tool access (default). Use when no specialized type fits or the task requires both reading and writing.\n" +
+        "\n" +
+        "Additional agent types may be available from .orca/agents/ definitions.\n" +
         "\n" +
         "When to use spawn_agent:\n" +
         "- Broad codebase exploration (\"find all usages of X\", \"what is the project structure?\", \"how does Y work?\")\n" +
@@ -57,8 +59,7 @@ public sealed class SpawnAgentTool : IOrcaTool
             },
             "agent_type": {
                 "type": "string",
-                "enum": ["explore", "plan", "bash", "review", "general"],
-                "description": "The type of sub-agent to spawn. Determines the system prompt and available tools. Use 'explore' for codebase search/understanding, 'plan' for architecture/design, 'bash' for command execution, 'review' for code review/diff analysis, 'general' for full tool access (default)."
+                "description": "The type of sub-agent to spawn. Built-in types: explore, plan, bash, review, general (default). Custom types from .orca/agents/ are also available. Determines the system prompt and available tools."
             }
         },
         "required": ["task"]

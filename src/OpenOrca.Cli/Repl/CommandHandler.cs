@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Orchestration;
 using OpenOrca.Core.Serialization;
 using OpenOrca.Core.Session;
 using OpenOrca.Cli.CustomCommands;
@@ -32,6 +33,7 @@ internal sealed class CommandHandler
     private readonly CheckpointManager _checkpointManager;
     private readonly CustomCommandLoader _customCommandLoader;
     private readonly MemoryManager _memoryManager;
+    private readonly AgentOrchestrator _orchestrator;
 
     public IList<AITool>? Tools { get; set; }
 
@@ -49,7 +51,8 @@ internal sealed class CommandHandler
         ILogger logger,
         CheckpointManager checkpointManager,
         CustomCommandLoader customCommandLoader,
-        MemoryManager memoryManager)
+        MemoryManager memoryManager,
+        AgentOrchestrator orchestrator)
     {
         _chatClient = chatClient;
         _config = config;
@@ -65,6 +68,7 @@ internal sealed class CommandHandler
         _checkpointManager = checkpointManager;
         _customCommandLoader = customCommandLoader;
         _memoryManager = memoryManager;
+        _orchestrator = orchestrator;
     }
 
     /// <summary>
@@ -172,6 +176,10 @@ internal sealed class CommandHandler
 
             case SlashCommand.Fork:
                 await HandleForkAsync(command.Args, conversation);
+                return false;
+
+            case SlashCommand.Review:
+                await HandleReviewAsync(command.Args, ct);
                 return false;
 
             case SlashCommand.CustomCommand:
@@ -1146,23 +1154,13 @@ internal sealed class CommandHandler
             if (!string.IsNullOrWhiteSpace(staged))
             {
                 var display = stagedStat + "\n\n" + staged;
-                if (display.Length > CliConstants.BashOutputMaxChars)
-                    display = display[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
-                AnsiConsole.Write(new Panel(Markup.Escape(display.TrimEnd()))
-                    .Header("[green]Staged Changes[/]")
-                    .Border(BoxBorder.Rounded)
-                    .BorderColor(Color.Green));
+                DiffRenderer.RenderUnifiedDiff(display.TrimEnd(), "Staged Changes", Color.Green);
             }
 
             if (!string.IsNullOrWhiteSpace(unstaged))
             {
                 var display = unstagedStat + "\n\n" + unstaged;
-                if (display.Length > CliConstants.BashOutputMaxChars)
-                    display = display[..CliConstants.BashOutputMaxChars] + "\n... (truncated)";
-                AnsiConsole.Write(new Panel(Markup.Escape(display.TrimEnd()))
-                    .Header("[yellow]Unstaged Changes[/]")
-                    .Border(BoxBorder.Rounded)
-                    .BorderColor(Color.Yellow));
+                DiffRenderer.RenderUnifiedDiff(display.TrimEnd(), "Unstaged Changes", Color.Yellow);
             }
         }
         catch (Exception ex)
@@ -1359,10 +1357,7 @@ internal sealed class CommandHandler
                     return;
                 }
                 var diff = await _checkpointManager.DiffAsync(diffPath, sessionId);
-                AnsiConsole.Write(new Panel(Markup.Escape(diff))
-                    .Header("[cyan]Checkpoint Diff[/]")
-                    .Border(BoxBorder.Rounded)
-                    .BorderColor(Color.Cyan1));
+                DiffRenderer.RenderUnifiedDiff(diff, "Checkpoint Diff", Color.Cyan1);
                 break;
 
             case "restore":
@@ -1473,6 +1468,70 @@ internal sealed class CommandHandler
         }
     }
 
+    private async Task HandleReviewAsync(string[] args, CancellationToken ct)
+    {
+        string task;
+        if (args.Length == 0)
+        {
+            task = "Review the uncommitted changes in this git repository. " +
+                   "Use git_status and git_diff to understand what changed, then examine the modified files for bugs, quality issues, and suggestions.";
+        }
+        else if (args[0].Equals("staged", StringComparison.OrdinalIgnoreCase))
+        {
+            task = "Review the staged changes in this git repository. " +
+                   "Use git_diff with the staged option to see only staged changes, then examine the modified files for bugs, quality issues, and suggestions.";
+        }
+        else if (args[0].Contains('.') || args[0].Contains('/') || args[0].Contains('\\'))
+        {
+            // Looks like a file path
+            var filePath = string.Join(" ", args);
+            task = $"Review the code in {filePath} for quality, bugs, and suggestions.";
+        }
+        else
+        {
+            // Assume it's a commit hash or ref
+            var commitRef = args[0];
+            task = $"Review the changes introduced by commit {commitRef}. " +
+                   "Use git_diff and git_log to understand the changes, then examine the modified files for bugs, quality issues, and suggestions.";
+        }
+
+        AnsiConsole.MarkupLine($"[yellow]Spawning review agent...[/]");
+
+        try
+        {
+            var context = await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("yellow"))
+                .StartAsync("Review agent working...", async _ =>
+                    await _orchestrator.SpawnAgentAsync(task, "review", ct));
+
+            if (context.Status == AgentStatus.Completed)
+            {
+                AnsiConsole.MarkupLine($"[green]Review completed ({context.IterationCount} iterations)[/]");
+                if (!string.IsNullOrWhiteSpace(context.Result))
+                {
+                    AnsiConsole.Write(new Panel(Markup.Escape(context.Result.TrimEnd()))
+                        .Header("[green]Code Review[/]")
+                        .Border(BoxBorder.Rounded)
+                        .BorderColor(Color.Green));
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[red]Review agent {context.Status}: {Markup.Escape(context.Error ?? "")}[/]");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AnsiConsole.MarkupLine("[yellow]Review cancelled.[/]");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Review command failed");
+            AnsiConsole.MarkupLine($"[red]Review failed: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
     private void ShowHelp()
     {
         var table = new Table()
@@ -1503,6 +1562,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/ask [question]"), "Toggle ask mode (no args) or one-shot ask (with args)");
         table.AddRow(Markup.Escape("/checkpoint list|diff|restore|clear"), "Manage file checkpoints (auto-saved before edits)");
         table.AddRow(Markup.Escape("/fork [name]"), "Fork current session (creates a branch)");
+        table.AddRow(Markup.Escape("/review [staged|commit|file]"), "Run code review via sub-agent");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 

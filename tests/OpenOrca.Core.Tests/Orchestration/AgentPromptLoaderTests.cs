@@ -3,9 +3,21 @@ using Xunit;
 
 namespace OpenOrca.Core.Tests.Orchestration;
 
-public class AgentPromptLoaderTests
+[Collection("AgentRegistry")]
+public class AgentPromptLoaderTests : IDisposable
 {
     private readonly AgentPromptLoader _loader = new();
+
+    public AgentPromptLoaderTests()
+    {
+        // Ensure no custom types interfere with built-in type resolution
+        AgentTypeRegistry.ClearCustom();
+    }
+
+    public void Dispose()
+    {
+        AgentTypeRegistry.ClearCustom();
+    }
 
     [Theory]
     [InlineData("explore")]

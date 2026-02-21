@@ -1,11 +1,11 @@
 namespace OpenOrca.Core.Orchestration;
 
 /// <summary>
-/// Static registry of built-in agent types. Provides lookup by name and enumeration for prompt generation.
+/// Registry of agent types. Built-in types are always available; custom types can be registered at runtime.
 /// </summary>
 public static class AgentTypeRegistry
 {
-    private static readonly Dictionary<string, AgentTypeDefinition> Types = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, AgentTypeDefinition> BuiltInTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["explore"] = new AgentTypeDefinition(
             Name: "explore",
@@ -38,21 +38,68 @@ public static class AgentTypeRegistry
             PromptResourceName: "general.md")
     };
 
+    private static readonly Dictionary<string, AgentTypeDefinition> CustomTypes = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
-    /// Resolve an agent type by name. Returns null if not found.
+    /// Register a single custom agent type. Overwrites any existing custom type with the same name.
+    /// </summary>
+    public static void Register(AgentTypeDefinition def)
+    {
+        CustomTypes[def.Name] = def;
+    }
+
+    /// <summary>
+    /// Register multiple custom agent types. Project types override global types.
+    /// Custom types override built-in types with a same-name collision.
+    /// </summary>
+    public static void RegisterCustom(Dictionary<string, AgentTypeDefinition> customs)
+    {
+        foreach (var (name, def) in customs)
+            CustomTypes[name] = def;
+    }
+
+    /// <summary>
+    /// Clear all custom agent registrations (useful for testing).
+    /// </summary>
+    public static void ClearCustom() => CustomTypes.Clear();
+
+    /// <summary>
+    /// Resolve an agent type by name. Custom types take precedence over built-in types.
+    /// Returns null if not found.
     /// </summary>
     public static AgentTypeDefinition? Resolve(string name)
     {
-        return Types.GetValueOrDefault(name);
+        // Custom types take precedence
+        if (CustomTypes.TryGetValue(name, out var custom))
+            return custom;
+
+        return BuiltInTypes.GetValueOrDefault(name);
     }
 
     /// <summary>
     /// Returns the default agent type ("general").
     /// </summary>
-    public static AgentTypeDefinition GetDefault() => Types["general"];
+    public static AgentTypeDefinition GetDefault() => BuiltInTypes["general"];
 
     /// <summary>
-    /// Returns all registered agent types.
+    /// Returns all registered agent types (built-in + custom, custom overrides built-in on collision).
     /// </summary>
-    public static IReadOnlyList<AgentTypeDefinition> GetAll() => Types.Values.ToList();
+    public static IReadOnlyList<AgentTypeDefinition> GetAll()
+    {
+        var merged = new Dictionary<string, AgentTypeDefinition>(BuiltInTypes, StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, def) in CustomTypes)
+            merged[name] = def;
+        return merged.Values.ToList();
+    }
+
+    /// <summary>
+    /// Returns all registered agent type names.
+    /// </summary>
+    public static IReadOnlyList<string> GetAllNames()
+    {
+        var names = new HashSet<string>(BuiltInTypes.Keys, StringComparer.OrdinalIgnoreCase);
+        foreach (var name in CustomTypes.Keys)
+            names.Add(name);
+        return names.ToList();
+    }
 }

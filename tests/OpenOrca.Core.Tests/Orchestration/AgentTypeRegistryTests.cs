@@ -3,6 +3,7 @@ using Xunit;
 
 namespace OpenOrca.Core.Tests.Orchestration;
 
+[Collection("AgentRegistry")]
 public class AgentTypeRegistryTests
 {
     [Fact]
@@ -41,8 +42,9 @@ public class AgentTypeRegistryTests
     }
 
     [Fact]
-    public void GetAll_ReturnsFiveTypes()
+    public void GetAll_ReturnsAtLeastFiveBuiltInTypes()
     {
+        AgentTypeRegistry.ClearCustom();
         var all = AgentTypeRegistry.GetAll();
 
         Assert.Equal(5, all.Count);

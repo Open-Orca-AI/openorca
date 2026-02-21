@@ -99,23 +99,20 @@ public class SpawnAgentToolTests
     }
 
     [Fact]
-    public void ParameterSchema_IncludesAgentTypeEnum()
+    public void ParameterSchema_AgentTypeHasDescription()
     {
         var tool = new SpawnAgentTool();
         var schema = tool.ParameterSchema;
 
         var agentTypeProp = schema.GetProperty("properties").GetProperty("agent_type");
-        var enumValues = agentTypeProp.GetProperty("enum");
+        var description = agentTypeProp.GetProperty("description").GetString()!;
 
-        var values = new List<string>();
-        foreach (var val in enumValues.EnumerateArray())
-            values.Add(val.GetString()!);
-
-        Assert.Contains("explore", values);
-        Assert.Contains("plan", values);
-        Assert.Contains("bash", values);
-        Assert.Contains("review", values);
-        Assert.Contains("general", values);
+        Assert.Contains("explore", description);
+        Assert.Contains("plan", description);
+        Assert.Contains("bash", description);
+        Assert.Contains("review", description);
+        Assert.Contains("general", description);
+        Assert.Contains("Custom types", description);
     }
 
     [Fact]

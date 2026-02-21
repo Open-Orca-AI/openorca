@@ -87,6 +87,8 @@ public sealed class ToolRegistry
 
     public IReadOnlyCollection<IOrcaTool> GetAll() => _tools.Values;
 
+    public IReadOnlyCollection<string> GetToolNames() => _tools.Keys;
+
     public IList<AITool> GenerateAITools()
     {
         var tools = new List<AITool>();

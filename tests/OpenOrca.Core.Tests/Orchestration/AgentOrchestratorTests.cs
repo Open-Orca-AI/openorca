@@ -6,6 +6,7 @@ using Xunit;
 
 namespace OpenOrca.Core.Tests.Orchestration;
 
+[Collection("AgentRegistry")]
 public class AgentOrchestratorTests
 {
     private static AgentOrchestrator CreateOrchestrator(IChatClient? client = null, OrcaConfig? config = null)
@@ -126,6 +127,31 @@ public class AgentOrchestratorTests
 
         Assert.True(AgentOrchestrator.IsToolAllowed(explore, "READ_FILE"));
         Assert.True(AgentOrchestrator.IsToolAllowed(explore, "Glob"));
+    }
+
+    [Fact]
+    public async Task SpawnParallelAsync_TwoAgents_BothComplete()
+    {
+        var orchestrator = CreateOrchestrator();
+
+        var results = await orchestrator.SpawnParallelAsync(
+            ["task 1", "task 2"], CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.Equal(AgentStatus.Completed, r.Status));
+    }
+
+    [Fact]
+    public async Task SpawnParallelAsync_AgentsHaveIsolatedConversations()
+    {
+        var orchestrator = CreateOrchestrator();
+
+        var results = await orchestrator.SpawnParallelAsync(
+            ["task A", "task B"], CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        Assert.NotSame(results[0].Conversation, results[1].Conversation);
+        Assert.NotEqual(results[0].Id, results[1].Id);
     }
 
     /// <summary>
