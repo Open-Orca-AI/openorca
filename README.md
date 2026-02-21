@@ -1,8 +1,14 @@
-# OpenOrca
+<p align="center">
+  <img src="assets/orca_mascot.png" alt="OpenOrca Mascot" width="200">
+</p>
 
-[![CI](https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml/badge.svg)](https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
+<h1 align="center">OpenOrca</h1>
+
+<p align="center">
+  <a href="https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml"><img src="https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://dotnet.microsoft.com/download/dotnet/9.0"><img src="https://img.shields.io/badge/.NET-9.0-purple.svg" alt=".NET 9"></a>
+</p>
 
 ![OpenOrca Demo](demo/demo.gif)
 
