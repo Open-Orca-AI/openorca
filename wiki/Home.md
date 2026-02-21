@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Open-Orca-AI/openorca/main/assets/orca_mascot.png" alt="OpenOrca Mascot" width="150">
+</p>
+
 # OpenOrca
 
 **OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 34 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
