@@ -25,6 +25,7 @@ public enum SlashCommand
     Add,
     Ask,
     Checkpoint,
+    Fork,
     CustomCommand
 }
 
@@ -75,6 +76,7 @@ public sealed class CommandParser
             "/add" => new ParsedCommand(SlashCommand.Add, args),
             "/ask" => new ParsedCommand(SlashCommand.Ask, args),
             "/checkpoint" or "/cp!" => new ParsedCommand(SlashCommand.Checkpoint, args),
+            "/fork" or "/f!" => new ParsedCommand(SlashCommand.Fork, args),
             _ => TryParseCustomCommand(cmd, args)
         };
     }

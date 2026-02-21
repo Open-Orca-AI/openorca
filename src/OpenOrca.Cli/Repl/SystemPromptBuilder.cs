@@ -68,6 +68,15 @@ internal sealed class SystemPromptBuilder
         if (planMode)
             result += "\n\n" + PromptConstants.PlanModeSystemPromptAddition;
 
+        if (_config.Thinking.BudgetTokens > 0)
+            result += $"\n\nThinking budget: You have a budget of {_config.Thinking.BudgetTokens} tokens for <think> reasoning. Use them wisely — keep thinking brief for simple tasks, thorough for complex ones.";
+
+        if (_config.SandboxMode)
+            result += "\n\nSANDBOX MODE: You only have read-only tools available. You cannot modify files, run commands, or make changes.";
+
+        if (_config.AllowedDirectory is not null)
+            result += $"\n\nDIRECTORY RESTRICTION: File operations are restricted to: {_config.AllowedDirectory}";
+
         return result;
     }
 

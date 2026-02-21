@@ -18,4 +18,6 @@ namespace OpenOrca.Core.Serialization;
 [JsonSerializable(typeof(Dictionary<string, object?>))]
 [JsonSerializable(typeof(IDictionary<string, object?>))]
 [JsonSerializable(typeof(JsonElement))]
+[JsonSerializable(typeof(McpServerConfig))]
+[JsonSerializable(typeof(Dictionary<string, McpServerConfig>))]
 public partial class OrcaJsonContext : JsonSerializerContext;

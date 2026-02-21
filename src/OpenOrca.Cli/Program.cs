@@ -65,6 +65,24 @@ var outputArgIndex = Array.IndexOf(args, "--output");
 var jsonOutputMode = outputArgIndex >= 0 && outputArgIndex + 1 < args.Length
     && args[outputArgIndex + 1].Equals("json", StringComparison.OrdinalIgnoreCase);
 
+// Parse --print / -p as alias for --prompt + --output json
+var printArgIndex = Array.FindIndex(args, a => a is "--print" or "-p");
+string? printPrompt = null;
+if (printArgIndex >= 0 && printArgIndex + 1 < args.Length)
+{
+    printPrompt = args[printArgIndex + 1];
+    jsonOutputMode = true;
+}
+
+// Parse --sandbox / --simple flag
+var sandboxMode = Array.Exists(args, a => a is "--sandbox" or "--simple");
+if (sandboxMode) config.SandboxMode = true;
+
+// Parse --allow-dir <path> flag
+var allowDirIndex = Array.IndexOf(args, "--allow-dir");
+if (allowDirIndex >= 0 && allowDirIndex + 1 < args.Length)
+    config.AllowedDirectory = Path.GetFullPath(args[allowDirIndex + 1]);
+
 // Parse --continue / -c and --resume / -r flags
 var continueSession = Array.Exists(args, a => a is "--continue" or "-c");
 var resumeArgIndex = Array.FindIndex(args, a => a is "--resume" or "-r");
@@ -136,6 +154,25 @@ await promptManager.EnsureDefaultPromptAsync();
 // Discover and register tools
 var toolRegistry = host.Services.GetRequiredService<ToolRegistry>();
 toolRegistry.DiscoverTools(typeof(ToolRegistry).Assembly);
+
+// Initialize MCP servers (if configured)
+OpenOrca.Core.Mcp.McpManager? mcpManager = null;
+if (config.McpServers.Count > 0)
+{
+    mcpManager = new OpenOrca.Core.Mcp.McpManager(programLogger);
+    try
+    {
+        var mcpToolPairs = await mcpManager.InitializeAsync(config.McpServers, CancellationToken.None);
+        foreach (var (client, toolDef) in mcpToolPairs)
+            toolRegistry.Register(new OpenOrca.Tools.Mcp.McpProxyTool(client, toolDef));
+        if (mcpToolPairs.Count > 0)
+            programLogger.LogInformation("Registered {Count} MCP tools", mcpToolPairs.Count);
+    }
+    catch (Exception ex)
+    {
+        programLogger.LogWarning(ex, "Failed to initialize MCP servers");
+    }
+}
 
 // Set up permission manager with interactive prompt
 var permissionManager = host.Services.GetRequiredService<PermissionManager>();
@@ -256,17 +293,63 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
         }
     }
 
+    // Directory restriction check
+    if (config.AllowedDirectory is not null &&
+        toolName is "edit_file" or "write_file" or "delete_file" or "copy_file" or "move_file" or "multi_edit" or "read_file" or "glob" or "grep")
+    {
+        string? pathToCheck = null;
+        if (argsElement.TryGetProperty("path", out var pathEl))
+            pathToCheck = pathEl.GetString();
+        else if (argsElement.TryGetProperty("directory", out var dirEl))
+            pathToCheck = dirEl.GetString();
+
+        if (pathToCheck is not null)
+        {
+            var fullPath = Path.GetFullPath(pathToCheck);
+            var allowedFull = Path.GetFullPath(config.AllowedDirectory);
+            if (!fullPath.StartsWith(allowedFull, StringComparison.OrdinalIgnoreCase))
+            {
+                programLogger.LogWarning("Tool {Tool} blocked — path {Path} is outside allowed directory {Dir}", toolName, fullPath, allowedFull);
+                return $"ERROR: Path '{pathToCheck}' is outside the allowed directory '{config.AllowedDirectory}'. File operations are restricted.";
+            }
+        }
+    }
+
+    var toolStopwatch = System.Diagnostics.Stopwatch.StartNew();
     try
     {
         var result = await tool.ExecuteAsync(argsElement, ct);
+        toolStopwatch.Stop();
         programLogger.LogDebug("Tool {Tool} completed: isError={IsError} ({Len} chars)",
             toolName, result.IsError, result.Content.Length);
 
         // Post-tool hook
         _ = hookRunner.RunPostHookAsync(toolName, argsJson, result.Content, result.IsError, ct);
 
+        // Track tool call for JSON output
+        replState.ToolCallHistory.Add(new OpenOrca.Cli.Serialization.ToolCallRecord
+        {
+            Name = toolName,
+            Arguments = argsJson,
+            Result = result.Content.Length > 1000 ? result.Content[..1000] + "..." : result.Content,
+            IsError = result.IsError,
+            DurationMs = toolStopwatch.ElapsedMilliseconds
+        });
+
+        // Track files modified
+        if (!result.IsError && toolName is "edit_file" or "write_file" or "delete_file" or "copy_file" or "move_file" or "multi_edit")
+        {
+            if (argsElement.TryGetProperty("path", out var p))
+                replState.FilesModified.Add(p.GetString()!);
+            if (toolName == "multi_edit" && argsElement.TryGetProperty("edits", out var edits) && edits.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var edit in edits.EnumerateArray())
+                    if (edit.TryGetProperty("path", out var ep))
+                        replState.FilesModified.Add(ep.GetString()!);
+            }
+        }
+
         // Prefix errors so the LLM clearly sees the tool failed and can adapt
-        // (e.g. "not a git repository" → model should init one or use a different tool)
         if (result.IsError)
             return $"ERROR: {result.Content}";
 
@@ -274,8 +357,19 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
     }
     catch (Exception ex)
     {
+        toolStopwatch.Stop();
         programLogger.LogError(ex, "Tool {Tool} execution threw unhandled exception", toolName);
         _ = hookRunner.RunPostHookAsync(toolName, argsJson, ex.Message, true, ct);
+
+        replState.ToolCallHistory.Add(new OpenOrca.Cli.Serialization.ToolCallRecord
+        {
+            Name = toolName,
+            Arguments = argsJson,
+            Result = ex.Message,
+            IsError = true,
+            DurationMs = toolStopwatch.ElapsedMilliseconds
+        });
+
         return $"ERROR executing {toolName}: {ex.Message}";
     }
 }
@@ -411,17 +505,29 @@ Console.CancelKeyPress += (_, e) =>
     AnsiConsole.MarkupLine("\n[yellow]Press Ctrl+C again to exit.[/]");
 };
 
-// Check for --prompt "..." mode (single prompt, then exit)
+// Check for --prompt "..." or --print "..." mode (single prompt, then exit)
 var promptArgIndex = Array.IndexOf(args, "--prompt");
-if (promptArgIndex >= 0 && promptArgIndex + 1 < args.Length)
+var singlePrompt = promptArgIndex >= 0 && promptArgIndex + 1 < args.Length
+    ? args[promptArgIndex + 1]
+    : printPrompt;
+
+try
 {
-    var singlePrompt = args[promptArgIndex + 1];
-    if (jsonOutputMode)
-        await repl.RunSinglePromptJsonAsync(singlePrompt, cts.Token);
+    if (singlePrompt is not null)
+    {
+        if (jsonOutputMode)
+            await repl.RunSinglePromptJsonAsync(singlePrompt, cts.Token);
+        else
+            await repl.RunSinglePromptAsync(singlePrompt, cts.Token);
+    }
     else
-        await repl.RunSinglePromptAsync(singlePrompt, cts.Token);
+    {
+        await repl.RunAsync(cts.Token);
+    }
 }
-else
+finally
 {
-    await repl.RunAsync(cts.Token);
+    // Dispose MCP servers on exit
+    if (mcpManager is not null)
+        await mcpManager.DisposeAsync();
 }

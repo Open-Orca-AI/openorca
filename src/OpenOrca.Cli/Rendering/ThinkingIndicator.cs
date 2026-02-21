@@ -37,6 +37,7 @@ public sealed class ThinkingIndicator : IDisposable
     private volatile bool _stopped;
     private volatile int _tokenCount;
     private volatile bool _receivingTokens;
+    private volatile int _budgetTokens;
 
     /// <param name="output">
     /// The TextWriter to render to. Pass the real stdout handle so the
@@ -48,6 +49,11 @@ public sealed class ThinkingIndicator : IDisposable
         _word = ThinkingWords[Random.Shared.Next(ThinkingWords.Length)];
         _animationTask = Task.Run(AnimateAsync);
     }
+
+    /// <summary>
+    /// Thinking token budget. 0 = unlimited.
+    /// </summary>
+    public int BudgetTokens { get => _budgetTokens; set => _budgetTokens = value; }
 
     /// <summary>
     /// Call from the streaming loop to update the live token count.
@@ -74,10 +80,12 @@ public sealed class ThinkingIndicator : IDisposable
         if (_receivingTokens)
         {
             var tokens = _tokenCount;
+            var budget = _budgetTokens;
             var tps = _stopwatch.Elapsed.TotalSeconds > 0.5
                 ? $" · {tokens / _stopwatch.Elapsed.TotalSeconds:F1} tok/s"
                 : "";
-            return $"{orca} {_word}... {time} · {tokens} tokens{tps}";
+            var tokenDisplay = budget > 0 ? $"{tokens}/{budget} tokens" : $"{tokens} tokens";
+            return $"{orca} {_word}... {time} · {tokenDisplay}{tps}";
         }
 
         return $"{orca} {_word}... {time}";

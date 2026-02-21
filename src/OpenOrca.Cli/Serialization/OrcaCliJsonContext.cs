@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace OpenOrca.Cli.Serialization;
 
 /// <summary>
-/// JSON output for --prompt single-shot mode.
+/// JSON output for --prompt / --print single-shot mode.
 /// </summary>
 public sealed class SinglePromptResult
 {
@@ -12,6 +12,39 @@ public sealed class SinglePromptResult
 
     [JsonPropertyName("tokens")]
     public int Tokens { get; init; }
+
+    [JsonPropertyName("duration_ms")]
+    public long DurationMs { get; init; }
+
+    [JsonPropertyName("tool_calls")]
+    public List<ToolCallRecord>? ToolCalls { get; init; }
+
+    [JsonPropertyName("files_modified")]
+    public List<string>? FilesModified { get; init; }
+
+    [JsonPropertyName("success")]
+    public bool Success { get; init; } = true;
+}
+
+/// <summary>
+/// Record of a single tool call for JSON output.
+/// </summary>
+public sealed class ToolCallRecord
+{
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = "";
+
+    [JsonPropertyName("arguments")]
+    public string? Arguments { get; init; }
+
+    [JsonPropertyName("result")]
+    public string? Result { get; init; }
+
+    [JsonPropertyName("is_error")]
+    public bool IsError { get; init; }
+
+    [JsonPropertyName("duration_ms")]
+    public long DurationMs { get; init; }
 }
 
 /// <summary>
@@ -50,6 +83,9 @@ public sealed class ProbePayload
 /// <summary>
 /// Source-generated JSON context for Cli-specific types.
 /// </summary>
+[JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(SinglePromptResult))]
 [JsonSerializable(typeof(ProbePayload))]
+[JsonSerializable(typeof(ToolCallRecord))]
+[JsonSerializable(typeof(List<ToolCallRecord>))]
 public partial class OrcaCliJsonContext : JsonSerializerContext;

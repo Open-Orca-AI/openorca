@@ -142,6 +142,70 @@ public sealed class SessionManager
         return true;
     }
 
+    /// <summary>
+    /// Fork the current conversation into a new session with parent tracking.
+    /// </summary>
+    public async Task<string> ForkAsync(Conversation conversation, string? title, string parentId, int messageIndex)
+    {
+        Directory.CreateDirectory(SessionDir);
+
+        var session = ConversationToSession(conversation);
+        // Generate a new ID (don't reuse parent's)
+        session.Id = Guid.NewGuid().ToString("N")[..8];
+        session.Title = title ?? $"Fork of {parentId}";
+        session.WorkingDirectory = Directory.GetCurrentDirectory();
+        session.ParentSessionId = parentId;
+        session.ForkPointMessageIndex = messageIndex;
+
+        var path = GetSessionPath(session.Id);
+        var json = JsonSerializer.Serialize(session, OrcaJsonContext.Default.SessionData);
+        await File.WriteAllTextAsync(path, json);
+
+        _logger.LogInformation("Session forked: {Id} from parent {Parent} at message {Index}", session.Id, parentId, messageIndex);
+        return session.Id;
+    }
+
+    /// <summary>
+    /// Build a tree of sessions showing parent-child relationships.
+    /// Returns a flattened list with depth for indentation.
+    /// </summary>
+    public List<(SessionData Session, int Depth)> GetSessionTree()
+    {
+        var all = List();
+        var childrenOf = new Dictionary<string, List<SessionData>>();
+        var roots = new List<SessionData>();
+
+        foreach (var s in all)
+        {
+            if (s.ParentSessionId is null)
+            {
+                roots.Add(s);
+            }
+            else
+            {
+                if (!childrenOf.ContainsKey(s.ParentSessionId))
+                    childrenOf[s.ParentSessionId] = [];
+                childrenOf[s.ParentSessionId].Add(s);
+            }
+        }
+
+        var result = new List<(SessionData, int)>();
+        void Walk(SessionData session, int depth)
+        {
+            result.Add((session, depth));
+            if (childrenOf.TryGetValue(session.Id, out var children))
+            {
+                foreach (var child in children.OrderByDescending(c => c.UpdatedAt))
+                    Walk(child, depth + 1);
+            }
+        }
+
+        foreach (var root in roots)
+            Walk(root, 0);
+
+        return result;
+    }
+
     private static SessionData ConversationToSession(Conversation conversation)
     {
         var session = new SessionData

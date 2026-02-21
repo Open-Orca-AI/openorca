@@ -5,6 +5,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Core.Chat;
+using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Serialization;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Registry;
@@ -13,13 +14,14 @@ namespace OpenOrca.Cli.Repl;
 
 /// <summary>
 /// Executes tool calls (both native and text-parsed) with plan mode enforcement,
-/// retry detection, parallel execution, and conversation state management.
+/// sandbox mode enforcement, retry detection, parallel execution, and conversation state management.
 /// </summary>
 internal sealed class ToolCallExecutor
 {
     private readonly ToolRegistry _toolRegistry;
     private readonly ToolCallRenderer _toolCallRenderer;
     private readonly ReplState _state;
+    private readonly OrcaConfig _config;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, (string Error, int Count)> _recentToolErrors = new();
 
@@ -36,11 +38,13 @@ internal sealed class ToolCallExecutor
         ToolRegistry toolRegistry,
         ToolCallRenderer toolCallRenderer,
         ReplState state,
+        OrcaConfig config,
         ILogger logger)
     {
         _toolRegistry = toolRegistry;
         _toolCallRenderer = toolCallRenderer;
         _state = state;
+        _config = config;
         _logger = logger;
     }
 
@@ -101,6 +105,17 @@ internal sealed class ToolCallExecutor
                 preError = true;
                 _toolCallRenderer.RenderPlanToolBlocked(toolName, risk);
                 _logger.LogInformation("Blocked tool {Name} in plan mode (risk: {Risk})", toolName, risk);
+            }
+            // Block non-ReadOnly tools in sandbox mode
+            else if (_config.SandboxMode && !IsToolAllowedInSandbox(toolName))
+            {
+                var orcaTool = _toolRegistry.Resolve(toolName);
+                var risk = orcaTool?.RiskLevel.ToString() ?? "Unknown";
+                preResult = $"SANDBOX MODE: Tool '{toolName}' is blocked in sandbox mode (risk: {risk}). " +
+                            "Only read-only tools are available.";
+                preError = true;
+                _toolCallRenderer.RenderToolResult(toolName, preResult, isError: true);
+                _logger.LogInformation("Blocked tool {Name} in sandbox mode (risk: {Risk})", toolName, risk);
             }
             else
             {
@@ -202,6 +217,16 @@ internal sealed class ToolCallExecutor
                 preError = true;
                 _toolCallRenderer.RenderPlanToolBlocked(toolName, risk);
                 _logger.LogInformation("Blocked text-parsed tool {Name} in plan mode (risk: {Risk})", toolName, risk);
+            }
+            // Block non-ReadOnly tools in sandbox mode
+            else if (_config.SandboxMode && !IsToolAllowedInSandbox(toolName))
+            {
+                var orcaTool = _toolRegistry.Resolve(toolName);
+                var risk = orcaTool?.RiskLevel.ToString() ?? "Unknown";
+                preResult = $"SANDBOX MODE: Tool '{toolName}' is blocked in sandbox mode (risk: {risk}). " +
+                            "Only read-only tools are available.";
+                preError = true;
+                _logger.LogInformation("Blocked text-parsed tool {Name} in sandbox mode (risk: {Risk})", toolName, risk);
             }
             else
             {
@@ -345,13 +370,26 @@ internal sealed class ToolCallExecutor
     }
 
     /// <summary>
+    /// Check if a tool is allowed in sandbox mode.
+    /// Only ReadOnly tools can run.
+    /// </summary>
+    public bool IsToolAllowedInSandbox(string toolName)
+    {
+        var tool = _toolRegistry.Resolve(toolName);
+        if (tool is null) return false;
+        return tool.RiskLevel == ToolRiskLevel.ReadOnly;
+    }
+
+    /// <summary>
     /// Get the tools list filtered for the current mode.
-    /// In plan mode, only read-only tools are included.
+    /// In plan mode or sandbox mode, only read-only tools are included.
     /// </summary>
     public IList<AITool> GetToolsForMode()
     {
         if (Tools is null) return [];
-        if (!_state.PlanMode) return Tools;
+
+        var restrictToReadOnly = _state.PlanMode || _config.SandboxMode;
+        if (!restrictToReadOnly) return Tools;
 
         return Tools.Where(t =>
         {
