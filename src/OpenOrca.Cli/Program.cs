@@ -249,24 +249,24 @@ orchestrator.ToolExecutor = ExecuteToolAsync;
 var spawnTool = toolRegistry.Resolve("spawn_agent") as SpawnAgentTool;
 if (spawnTool is not null)
 {
-    spawnTool.AgentSpawner = async (task, ct) =>
+    spawnTool.AgentSpawner = async (task, agentType, ct) =>
     {
-        AnsiConsole.MarkupLine($"[yellow]Spawning sub-agent: {Markup.Escape(task)}[/]");
+        AnsiConsole.MarkupLine($"[yellow]Spawning {Markup.Escape(agentType)} sub-agent: {Markup.Escape(task)}[/]");
 
         var context = await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
             .SpinnerStyle(Style.Parse("yellow"))
-            .StartAsync($"Sub-agent working...", async _ =>
-                await orchestrator.SpawnAgentAsync(task, ct));
+            .StartAsync($"{agentType} agent working...", async _ =>
+                await orchestrator.SpawnAgentAsync(task, agentType, ct));
 
         if (context.Status == AgentStatus.Completed)
         {
-            AnsiConsole.MarkupLine($"[green]Sub-agent completed ({context.IterationCount} iterations)[/]");
+            AnsiConsole.MarkupLine($"[green]{Markup.Escape(agentType)} agent completed ({context.IterationCount} iterations)[/]");
             return context.Result ?? "(no result)";
         }
         else
         {
-            AnsiConsole.MarkupLine($"[red]Sub-agent {context.Status}: {Markup.Escape(context.Error ?? "")}[/]");
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(agentType)} agent {context.Status}: {Markup.Escape(context.Error ?? "")}[/]");
             return $"Sub-agent failed: {context.Error}";
         }
     };

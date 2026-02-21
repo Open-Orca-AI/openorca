@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using OpenOrca.Core.Configuration;
-using OpenOrca.Core.Orchestration;
 
 namespace OpenOrca.Cli.Repl;
 
@@ -109,9 +108,14 @@ internal sealed class SystemPromptBuilder
             AVAILABLE TOOLS:
             {toolList}
 
+            AGENT DELEGATION:
+            For broad codebase exploration and deep research, use the spawn_agent tool with agent_type="explore"
+            instead of calling glob/grep/read_file directly. This is especially useful when a task requires more
+            than 3 search queries. See the spawn_agent tool description for all available agent types.
+
             WORKFLOW:
             1. Understand what the user wants
-            2. Explore first — use read_file, glob, grep, list_directory to understand the codebase
+            2. Explore first — for quick lookups use read_file, glob, grep directly; for broad codebase understanding spawn an "explore" agent
             3. Plan your approach, then execute with tools (write_file, edit_file, bash, git_*)
             4. If something fails, diagnose the error and try an alternative approach
             5. Verify the changes worked (read back files, run builds/tests)

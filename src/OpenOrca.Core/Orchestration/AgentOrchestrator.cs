@@ -13,6 +13,7 @@ public sealed class AgentOrchestrator
     private readonly OrcaConfig _config;
     private readonly ILogger<AgentOrchestrator> _logger;
     private readonly List<AgentContext> _agents = [];
+    private readonly AgentPromptLoader _promptLoader = new();
 
     // Tool executor callback — same as the main REPL uses, but may have restricted permissions
     public Func<string, string, CancellationToken, Task<string>>? ToolExecutor { get; set; }
@@ -25,26 +26,38 @@ public sealed class AgentOrchestrator
         _logger = logger;
     }
 
-    public async Task<AgentContext> SpawnAgentAsync(string task, CancellationToken ct)
+    /// <summary>
+    /// Spawn a sub-agent with the default "general" type.
+    /// </summary>
+    public Task<AgentContext> SpawnAgentAsync(string task, CancellationToken ct)
+        => SpawnAgentAsync(task, "general", ct);
+
+    /// <summary>
+    /// Spawn a typed sub-agent. The agent type determines the system prompt and allowed tools.
+    /// </summary>
+    public async Task<AgentContext> SpawnAgentAsync(string task, string agentType, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(task);
+
+        var typeDef = AgentTypeRegistry.Resolve(agentType) ?? AgentTypeRegistry.GetDefault();
 
         var context = new AgentContext
         {
             Task = task,
+            AgentType = typeDef.Name,
             StartedAt = DateTime.UtcNow
         };
 
         context.Status = AgentStatus.Running;
         _agents.Add(context);
 
-        _logger.LogInformation("Spawning sub-agent {Id}: {Task}", context.Id, task);
+        _logger.LogInformation("Spawning {AgentType} sub-agent {Id}: {Task}", typeDef.Name, context.Id, task);
 
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(_config.Agent.TimeoutSeconds));
-            await RunAgentAsync(context, timeoutCts.Token);
+            await RunAgentAsync(context, typeDef, timeoutCts.Token);
             context.Status = AgentStatus.Completed;
             context.CompletedAt = DateTime.UtcNow;
         }
@@ -75,23 +88,33 @@ public sealed class AgentOrchestrator
 
     public IReadOnlyList<AgentContext> GetAllAgents() => _agents;
 
-    private async Task RunAgentAsync(AgentContext context, CancellationToken ct)
+    private async Task RunAgentAsync(AgentContext context, AgentTypeDefinition typeDef, CancellationToken ct)
     {
         var maxIterations = _config.Agent.MaxIterations;
+        var cwd = Directory.GetCurrentDirectory();
+        var platform = Environment.OSVersion.ToString();
 
-        context.Conversation.AddSystemMessage(
-            $"""
-            You are a focused sub-agent. Complete the following task and return a concise result.
-            Task: {context.Task}
+        // Load typed prompt, fall back to generic prompt
+        var systemPrompt = _promptLoader.LoadPrompt(typeDef, context.Task, cwd, platform);
+        if (systemPrompt is null)
+        {
+            systemPrompt = $"""
+                You are a focused sub-agent. Complete the following task and return a concise result.
+                Task: {context.Task}
 
-            Current working directory: {Directory.GetCurrentDirectory()}
-            Platform: {Environment.OSVersion}
+                Current working directory: {cwd}
+                Platform: {platform}
 
-            Use tools to accomplish the task. Be efficient and focused.
-            When done, provide a clear summary of what you found or accomplished.
-            """);
+                Use tools to accomplish the task. Be efficient and focused.
+                When done, provide a clear summary of what you found or accomplished.
+                """;
+        }
 
+        context.Conversation.AddSystemMessage(systemPrompt);
         context.Conversation.AddUserMessage(context.Task);
+
+        // Filter tools for this agent type
+        var filteredTools = FilterToolsForType(typeDef);
 
         for (var iteration = 0; iteration < maxIterations; iteration++)
         {
@@ -101,7 +124,7 @@ public sealed class AgentOrchestrator
             {
                 Temperature = _config.LmStudio.Temperature,
                 MaxOutputTokens = _config.LmStudio.MaxTokens,
-                Tools = Tools ?? []
+                Tools = filteredTools
             };
 
             var response = await _chatClient.GetResponseAsync(
@@ -125,6 +148,21 @@ public sealed class AgentOrchestrator
                 foreach (var call in functionCalls)
                 {
                     var toolName = call.Name;
+
+                    // Defense-in-depth: reject disallowed tools even if text-based parsing let them through
+                    if (!IsToolAllowed(typeDef, toolName))
+                    {
+                        _logger.LogWarning(
+                            "Agent {Id} ({Type}) attempted disallowed tool: {Tool}",
+                            context.Id, typeDef.Name, toolName);
+
+                        var rejectionMsg = $"Tool '{toolName}' is not available to {typeDef.Name} agents. " +
+                            $"Allowed tools: {string.Join(", ", typeDef.AllowedTools ?? ["all"])}.";
+
+                        AddToolResult(context, call, rejectionMsg);
+                        continue;
+                    }
+
                     var args = call.Arguments is not null
                         ? JsonSerializer.Serialize(call.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
                         : "{}";
@@ -146,22 +184,54 @@ public sealed class AgentOrchestrator
                         result = "Tool execution not available.";
                     }
 
-                    if (_config.LmStudio.NativeToolCalling)
-                    {
-                        var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
-                        toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
-                        context.Conversation.AddMessage(toolResultMessage);
-                    }
-                    else
-                    {
-                        // Text-based models cannot handle FunctionResultContent messages
-                        context.Conversation.AddMessage(
-                            new ChatMessage(ChatRole.User, $"[Tool result for {toolName}]: {result}"));
-                    }
+                    AddToolResult(context, call, result);
                 }
             }
         }
 
         context.Result = "Agent reached maximum iterations without completing.";
+    }
+
+    /// <summary>
+    /// Filter the full tool list to only include tools allowed by the agent type definition.
+    /// Returns all tools if AllowedTools is null (unrestricted).
+    /// </summary>
+    public IList<AITool> FilterToolsForType(AgentTypeDefinition typeDef)
+    {
+        if (typeDef.AllowedTools is null)
+            return Tools ?? [];
+
+        var allowedSet = new HashSet<string>(typeDef.AllowedTools, StringComparer.OrdinalIgnoreCase);
+        return (Tools ?? [])
+            .Where(t => t is AIFunction fn && allowedSet.Contains(fn.Name))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Check whether a tool name is allowed for the given agent type.
+    /// Returns true if AllowedTools is null (unrestricted).
+    /// </summary>
+    public static bool IsToolAllowed(AgentTypeDefinition typeDef, string toolName)
+    {
+        if (typeDef.AllowedTools is null)
+            return true;
+
+        return typeDef.AllowedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void AddToolResult(AgentContext context, FunctionCallContent call, string result)
+    {
+        if (_config.LmStudio.NativeToolCalling)
+        {
+            var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
+            toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
+            context.Conversation.AddMessage(toolResultMessage);
+        }
+        else
+        {
+            // Text-based models cannot handle FunctionResultContent messages
+            context.Conversation.AddMessage(
+                new ChatMessage(ChatRole.User, $"[Tool result for {call.Name}]: {result}"));
+        }
     }
 }
