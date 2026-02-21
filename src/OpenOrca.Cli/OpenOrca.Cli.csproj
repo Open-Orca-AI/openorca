@@ -13,10 +13,7 @@
 
     <!-- Startup performance: pre-compile IL to native code at publish time -->
     <PublishReadyToRun>true</PublishReadyToRun>
-
-    <!-- Trimming: partial mode only trims assemblies marked trimmable (BCL, Microsoft.Extensions.*) -->
-    <PublishTrimmed>true</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
