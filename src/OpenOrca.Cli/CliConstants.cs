@@ -19,6 +19,8 @@ internal static class CliConstants
     public const int SystemPromptDisplayMaxChars = 500;
     public const int ToolResultLogMaxChars = 1000;
     public const int ToolResultDisplayMaxChars = 2000;
+    public const int ToolCallSummaryMaxChars = 80;
+    public const int ToolErrorDisplayMaxChars = 120;
     public const int CompactMaxOutputTokens = 500;
 
     // Process wait limits (milliseconds)
