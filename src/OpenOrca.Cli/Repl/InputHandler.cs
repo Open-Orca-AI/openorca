@@ -8,6 +8,8 @@ public sealed class InputHandler
 {
     private readonly ReplState _state;
     private readonly TerminalPanel _panel;
+    private readonly InjectableInputSource _inputSource;
+    private readonly LineEditor? _editor;
     private bool _modeCycled;
     private string _savedInput = string.Empty;
 
@@ -15,26 +17,35 @@ public sealed class InputHandler
     {
         _state = state;
         _panel = panel;
+        _inputSource = new InjectableInputSource();
+
+        // Create the editor once so history persists across turns
+        if (!Console.IsInputRedirected && LineEditor.IsSupported(AnsiConsole.Console))
+        {
+            _editor = new LineEditor(AnsiConsole.Console, _inputSource)
+            {
+                Prompt = new ModePrompt(state),
+            };
+            _editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Shift,
+                () => new CycleModeCommand(state, text =>
+                {
+                    _modeCycled = true;
+                    _savedInput = text;
+                }));
+
+            // Bind plain Up/Down to history (RadLine defaults to Ctrl+Up/Ctrl+Down)
+            _editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
+            _editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
+        }
     }
 
     public async Task<string?> ReadInputAsync(CancellationToken ct)
     {
         // Non-interactive fallback (piped input / CI)
-        if (Console.IsInputRedirected || !LineEditor.IsSupported(AnsiConsole.Console))
+        if (_editor is null)
             return ReadNonInteractive();
 
-        var prompt = new ModePrompt(_state);
-        var inputSource = new InjectableInputSource();
-        var editor = new LineEditor(AnsiConsole.Console, inputSource)
-        {
-            Prompt = prompt,
-        };
-        editor.KeyBindings.Add(ConsoleKey.Tab, ConsoleModifiers.Shift,
-            () => new CycleModeCommand(_state, text =>
-            {
-                _modeCycled = true;
-                _savedInput = text;
-            }));
+        var prompt = (ModePrompt)_editor.Prompt;
 
         while (true)
         {
@@ -43,7 +54,7 @@ public sealed class InputHandler
 
             if (_savedInput.Length > 0)
             {
-                inputSource.Inject(_savedInput);
+                _inputSource.Inject(_savedInput);
                 _savedInput = string.Empty;
             }
 
@@ -52,7 +63,7 @@ public sealed class InputHandler
             string? result;
             try
             {
-                result = await editor.ReadLine(ct);
+                result = await _editor.ReadLine(ct);
             }
             catch (OperationCanceledException)
             {
@@ -77,6 +88,8 @@ public sealed class InputHandler
             // Backslash continuation
             if (!trimmed.EndsWith('\\'))
             {
+                if (trimmed.Length > 0)
+                    _editor.History.Add(trimmed);
                 return trimmed;
             }
 
@@ -90,7 +103,7 @@ public sealed class InputHandler
                 string? next;
                 try
                 {
-                    next = await editor.ReadLine(ct);
+                    next = await _editor.ReadLine(ct);
                 }
                 catch (OperationCanceledException)
                 {
@@ -113,6 +126,8 @@ public sealed class InputHandler
             }
 
             var final = sb.ToString().Trim();
+            if (final.Length > 0)
+                _editor.History.Add(final);
             return final;
         }
     }
