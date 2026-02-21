@@ -11,12 +11,26 @@ public sealed class OrcaConfig
     public AgentConfig Agent { get; set; } = new();
     public HooksConfig Hooks { get; set; } = new();
     public MemoryConfig Memory { get; set; } = new();
+    public ThinkingConfig Thinking { get; set; } = new();
+    public Dictionary<string, McpServerConfig> McpServers { get; set; } = [];
 
     /// <summary>
     /// Runtime-only flag set by --demo CLI argument. Never serialized to config.json.
     /// </summary>
     [JsonIgnore]
     public bool DemoMode { get; set; }
+
+    /// <summary>
+    /// Runtime-only flag set by --sandbox or --simple CLI argument. Never serialized.
+    /// </summary>
+    [JsonIgnore]
+    public bool SandboxMode { get; set; }
+
+    /// <summary>
+    /// Runtime-only directory restriction set by --allow-dir CLI argument. Never serialized.
+    /// </summary>
+    [JsonIgnore]
+    public string? AllowedDirectory { get; set; }
 }
 
 public sealed class LmStudioConfig
@@ -105,4 +119,25 @@ public sealed class MemoryConfig
 {
     public bool AutoMemoryEnabled { get; set; } = true;
     public int MaxMemoryFiles { get; set; } = 20;
+}
+
+public sealed class ThinkingConfig
+{
+    /// <summary>
+    /// Maximum tokens for &lt;think&gt; reasoning. 0 = unlimited.
+    /// </summary>
+    public int BudgetTokens { get; set; }
+
+    /// <summary>
+    /// Default visibility of thinking output on startup.
+    /// </summary>
+    public bool DefaultVisible { get; set; }
+}
+
+public sealed class McpServerConfig
+{
+    public string Command { get; set; } = "";
+    public List<string> Args { get; set; } = [];
+    public Dictionary<string, string> Env { get; set; } = [];
+    public bool Enabled { get; set; } = true;
 }

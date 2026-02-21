@@ -65,7 +65,7 @@ public sealed class ReplLoop
 
         _systemPromptBuilder = new SystemPromptBuilder(config, promptManager, memoryManager);
         var configEditor = new ConfigEditor(config, configManager, logger);
-        _toolCallExecutor = new ToolCallExecutor(toolRegistry, toolCallRenderer, _state, logger);
+        _toolCallExecutor = new ToolCallExecutor(toolRegistry, toolCallRenderer, _state, config, logger);
         var toolCallParser = new ToolCallParser(logger);
 
         // Discover custom commands and register with parser
@@ -125,12 +125,19 @@ public sealed class ReplLoop
 
         _logger.LogInformation("Single-prompt JSON mode: {Prompt}", prompt);
 
+        var sw = Stopwatch.StartNew();
         await _agentLoopRunner.RunAgentLoopAsync(conversation, ct);
+        sw.Stop();
 
+        var lastToolError = _state.ToolCallHistory.Count > 0 && _state.ToolCallHistory[^1].IsError;
         var result = new SinglePromptResult
         {
             Response = _state.LastAssistantResponse ?? "",
-            Tokens = _state.TotalOutputTokens
+            Tokens = _state.TotalOutputTokens,
+            DurationMs = sw.ElapsedMilliseconds,
+            ToolCalls = _state.ToolCallHistory.Count > 0 ? _state.ToolCallHistory.ToList() : null,
+            FilesModified = _state.FilesModified.Count > 0 ? _state.FilesModified.ToList() : null,
+            Success = !lastToolError
         };
 
         Console.WriteLine(JsonSerializer.Serialize(result, OrcaCliJsonContext.Default.SinglePromptResult));

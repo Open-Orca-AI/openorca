@@ -12,6 +12,8 @@ public sealed class SessionData
     public string? Model { get; set; }
     public string? SystemPrompt { get; set; }
     public List<SessionMessage> Messages { get; set; } = [];
+    public string? ParentSessionId { get; set; }
+    public int? ForkPointMessageIndex { get; set; }
 }
 
 public sealed class SessionMessage

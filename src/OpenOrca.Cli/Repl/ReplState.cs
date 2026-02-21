@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenOrca.Cli.Serialization;
 
 namespace OpenOrca.Cli.Repl;
 
@@ -44,6 +45,16 @@ public sealed class ReplState
     public Stopwatch SessionStopwatch { get; } = Stopwatch.StartNew();
     public string? LastAssistantResponse { get; set; }
     public string? CurrentSessionId { get; set; }
+
+    /// <summary>
+    /// Tool call history for JSON output mode.
+    /// </summary>
+    public List<ToolCallRecord> ToolCallHistory { get; } = [];
+
+    /// <summary>
+    /// Files modified during this session (for JSON output mode).
+    /// </summary>
+    public HashSet<string> FilesModified { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Cycle to the next input mode: Normal → Plan → Ask → Normal.

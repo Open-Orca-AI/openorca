@@ -43,6 +43,8 @@ public class CommandParserTests
     [InlineData("/rename", SlashCommand.Rename)]
     [InlineData("/add", SlashCommand.Add)]
     [InlineData("/ask", SlashCommand.Ask)]
+    [InlineData("/fork", SlashCommand.Fork)]
+    [InlineData("/f!", SlashCommand.Fork)]
     public void Parse_ValidCommand_ReturnsCorrectSlashCommand(string input, SlashCommand expected)
     {
         var result = _parser.TryParse(input);

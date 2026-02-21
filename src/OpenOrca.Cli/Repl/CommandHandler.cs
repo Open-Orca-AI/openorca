@@ -170,6 +170,10 @@ internal sealed class CommandHandler
                 await HandleCheckpointAsync(command.Args);
                 return false;
 
+            case SlashCommand.Fork:
+                await HandleForkAsync(command.Args, conversation);
+                return false;
+
             case SlashCommand.CustomCommand:
                 await HandleCustomCommandAsync(command.Args, conversation);
                 return false;
@@ -534,8 +538,49 @@ internal sealed class CommandHandler
                     AnsiConsole.MarkupLine($"[red]Session not found: {Markup.Escape(args[1])}[/]");
                 break;
 
+            case "tree":
+                var tree = _sessionManager.GetSessionTree();
+                if (tree.Count == 0)
+                {
+                    AnsiConsole.MarkupLine("[grey]No saved sessions.[/]");
+                    return;
+                }
+
+                var spectreTree = new Tree("[bold]Sessions[/]");
+                var nodeStack = new Dictionary<int, TreeNode>();
+
+                foreach (var (session, depth) in tree)
+                {
+                    var isCurrent = session.Id == _state.CurrentSessionId;
+                    var label = isCurrent
+                        ? $"[green bold]{Markup.Escape(session.Id)}[/] [green]{Markup.Escape(session.Title)}[/] [grey]({session.Messages.Count} msgs)[/]"
+                        : $"[cyan]{Markup.Escape(session.Id)}[/] {Markup.Escape(session.Title)} [grey]({session.Messages.Count} msgs)[/]";
+
+                    if (session.ParentSessionId is not null)
+                        label += $" [dim]← fork of {Markup.Escape(session.ParentSessionId)}[/]";
+
+                    TreeNode node;
+                    if (depth == 0)
+                    {
+                        node = spectreTree.AddNode(label);
+                    }
+                    else if (nodeStack.TryGetValue(depth - 1, out var parent))
+                    {
+                        node = parent.AddNode(label);
+                    }
+                    else
+                    {
+                        node = spectreTree.AddNode(label);
+                    }
+
+                    nodeStack[depth] = node;
+                }
+
+                AnsiConsole.Write(spectreTree);
+                break;
+
             default:
-                AnsiConsole.MarkupLine("[yellow]Usage: /session list|save [name]|load <id>|delete <id>[/]");
+                AnsiConsole.MarkupLine("[yellow]Usage: /session list|save [name]|load <id>|delete <id>|tree[/]");
                 break;
         }
     }
@@ -856,6 +901,29 @@ internal sealed class CommandHandler
         // 9. Native tool calling
         table.AddRow("Native tool calling",
             _config.LmStudio.NativeToolCalling ? "[green]Enabled[/]" : "[grey]Disabled[/]");
+
+        // 10. Sandbox mode
+        table.AddRow("Sandbox mode",
+            _config.SandboxMode ? "[yellow]Enabled (read-only tools only)[/]" : "[grey]Disabled[/]");
+
+        // 11. Directory restriction
+        table.AddRow("Directory restriction",
+            _config.AllowedDirectory is not null
+                ? $"[yellow]{Markup.Escape(_config.AllowedDirectory)}[/]"
+                : "[grey]None[/]");
+
+        // 12. Thinking budget
+        table.AddRow("Thinking budget",
+            _config.Thinking.BudgetTokens > 0
+                ? $"[cyan]{_config.Thinking.BudgetTokens} tokens[/]"
+                : "[grey]Unlimited[/]");
+
+        // 13. MCP servers
+        var enabledMcp = _config.McpServers.Count(kv => kv.Value.Enabled);
+        table.AddRow("MCP servers",
+            _config.McpServers.Count > 0
+                ? $"[cyan]{enabledMcp}/{_config.McpServers.Count} enabled[/]"
+                : "[grey]None configured[/]");
 
         AnsiConsole.Write(table);
     }
@@ -1333,6 +1401,39 @@ internal sealed class CommandHandler
         }
     }
 
+    private async Task HandleForkAsync(string[] args, Conversation conversation)
+    {
+        var parentId = _state.CurrentSessionId;
+        if (parentId is null)
+        {
+            // Save current session first to establish a parent
+            try
+            {
+                parentId = await _sessionManager.SaveAsync(conversation);
+                _state.CurrentSessionId = parentId;
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Failed to save current session before forking: {Markup.Escape(ex.Message)}[/]");
+                return;
+            }
+        }
+
+        var title = args.Length > 0 ? string.Join(" ", args) : null;
+        var messageIndex = conversation.Messages.Count;
+
+        try
+        {
+            var newId = await _sessionManager.ForkAsync(conversation, title, parentId, messageIndex);
+            AnsiConsole.MarkupLine($"[green]Forked as session {newId}: {Markup.Escape(title ?? $"Fork of {parentId}")}[/]");
+            AnsiConsole.MarkupLine("[grey]Current session continues unaffected. Use /session load to switch.[/]");
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Failed to fork session: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
     private async Task HandleCustomCommandAsync(string[] args, Conversation conversation)
     {
         if (args.Length == 0)
@@ -1401,6 +1502,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/add <file> [...]"), "Add file contents to conversation context");
         table.AddRow(Markup.Escape("/ask [question]"), "Toggle ask mode (no args) or one-shot ask (with args)");
         table.AddRow(Markup.Escape("/checkpoint list|diff|restore|clear"), "Manage file checkpoints (auto-saved before edits)");
+        table.AddRow(Markup.Escape("/fork [name]"), "Fork current session (creates a branch)");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 

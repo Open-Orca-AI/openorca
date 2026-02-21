@@ -72,6 +72,9 @@ internal sealed class AgentLoopRunner
         var nudgeAttempts = 0;
         _toolCallExecutor.ClearRecentErrors();
 
+        // Initialize thinking visibility from config on first run
+        _state.ShowThinking = _config.Thinking.DefaultVisible;
+
         // Auto-compact check
         if (_config.Context.AutoCompactEnabled)
         {
@@ -130,12 +133,16 @@ internal sealed class AgentLoopRunner
             _toolCallExecutor.RealStdout = realStdout;
 
             using var thinking = new ThinkingIndicator(realStdout);
+            thinking.BudgetTokens = _config.Thinking.BudgetTokens;
             var thinkFilter = new ThinkTagFilter();
             var firstToken = true;
             var firstResponseToken = true;
             var thinkingVisible = _state.ShowThinking;
             var consoleRedirected = false;
             var textParts = new List<string>();
+            var thinkingTokenCount = 0;
+            var budgetExceeded = false;
+            var budgetTokens = _config.Thinking.BudgetTokens;
 
             var realStderr = Console.Error;
             void RedirectConsole()
@@ -258,7 +265,12 @@ internal sealed class AgentLoopRunner
                                 var (thinkText, responseText) = thinkFilter.Process(textContent.Text);
 
                                 if (thinkText.Length > 0)
-                                    thinking.UpdateTokenCount(tokenCount);
+                                {
+                                    thinkingTokenCount++;
+                                    thinking.UpdateTokenCount(thinkingTokenCount);
+                                    if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
+                                        budgetExceeded = true;
+                                }
 
                                 if (responseText.Length > 0)
                                 {
@@ -354,7 +366,12 @@ internal sealed class AgentLoopRunner
                                     var (thinkText, responseText) = thinkFilter.Process(tc.Text);
 
                                     if (thinkText.Length > 0)
-                                        thinking.UpdateTokenCount(tokenCount);
+                                    {
+                                        thinkingTokenCount++;
+                                        thinking.UpdateTokenCount(thinkingTokenCount);
+                                        if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
+                                            budgetExceeded = true;
+                                    }
 
                                     if (responseText.Length > 0)
                                     {
@@ -509,14 +526,33 @@ internal sealed class AgentLoopRunner
                         continue;
                     }
 
-                    _logger.LogInformation("Executing {Count} native tool call(s)", nativeFunctionCalls.Count);
-                    conversation.AddMessage(assistantMessage);
-                    await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
+                    // Inject thinking budget advisory if exceeded
+                    if (budgetExceeded)
+                    {
+                        _logger.LogInformation("Thinking budget exceeded: {ThinkTokens} tokens (budget: {Budget})", thinkingTokenCount, budgetTokens);
+                        conversation.AddMessage(assistantMessage);
+                        conversation.AddUserMessage(
+                            $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
+                        await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Executing {Count} native tool call(s)", nativeFunctionCalls.Count);
+                        conversation.AddMessage(assistantMessage);
+                        await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
+                    }
                 }
                 else if (parsedFunctionCalls is { Count: > 0 })
                 {
                     _logger.LogInformation("Executing {Count} text-parsed tool call(s)", parsedFunctionCalls.Count);
                     conversation.AddMessage(assistantMessage);
+
+                    if (budgetExceeded)
+                    {
+                        conversation.AddUserMessage(
+                            $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
+                    }
+
                     await _toolCallExecutor.ExecuteTextToolCallsAsync(parsedFunctionCalls, conversation, genToken);
                 }
                 else
