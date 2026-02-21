@@ -9,8 +9,14 @@
     <!-- Publish as single-file executable -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <PublishTrimmed>false</PublishTrimmed>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Startup performance: pre-compile IL to native code at publish time -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+
+    <!-- Trimming: partial mode only trims assemblies marked trimmable (BCL, Microsoft.Extensions.*) -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
   <ItemGroup>
