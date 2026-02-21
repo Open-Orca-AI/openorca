@@ -8,7 +8,7 @@ public sealed class ToolCallRenderer
     {
         var panel = new Panel(Markup.Escape(arguments))
         {
-            Header = new PanelHeader($"[yellow] Tool: {Markup.Escape(toolName)} [/]"),
+            Header = new PanelHeader($"[yellow] \U0001F40B Tool: {Markup.Escape(toolName)} [/]"),
             Border = BoxBorder.Rounded,
             BorderStyle = new Style(Color.Yellow)
         };
@@ -16,22 +16,32 @@ public sealed class ToolCallRenderer
         AnsiConsole.Write(panel);
     }
 
-    public void RenderToolResult(string toolName, string result, bool isError = false)
+    public void RenderToolResult(string toolName, string result, bool isError = false, TimeSpan? elapsed = null)
     {
         var color = isError ? "red" : "green";
+        var icon = isError ? "\u2717" : "\u2713";
         var maxLen = CliConstants.ToolResultDisplayMaxChars;
         var display = result.Length > maxLen
             ? result[..maxLen] + $"\n... ({result.Length - maxLen} chars truncated)"
             : result;
 
+        var elapsedStr = elapsed.HasValue ? $" ({FormatElapsed(elapsed.Value)})" : "";
+
         var panel = new Panel(Markup.Escape(display))
         {
-            Header = new PanelHeader($"[{color}] Result: {Markup.Escape(toolName)} [/]"),
+            Header = new PanelHeader($"[{color}] {icon} Result: {Markup.Escape(toolName)}{elapsedStr} [/]"),
             Border = BoxBorder.Rounded,
             BorderStyle = new Style(isError ? Color.Red : Color.Green)
         };
 
         AnsiConsole.Write(panel);
+    }
+
+    private static string FormatElapsed(TimeSpan elapsed)
+    {
+        return elapsed.TotalMinutes >= 1
+            ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:D2}s"
+            : $"{elapsed.TotalSeconds:F1}s";
     }
 
     public void RenderPermissionPrompt(string toolName, string riskLevel)
