@@ -9,8 +9,7 @@ namespace OpenOrca.Core.Session;
 
 public sealed class SessionManager
 {
-    private static readonly string SessionDir = Path.Combine(
-        ConfigManager.GetConfigDirectory(), "sessions");
+    private readonly string _sessionDir;
 
     private readonly OrcaConfig _config;
     private readonly ILogger<SessionManager> _logger;
@@ -19,11 +18,22 @@ public sealed class SessionManager
     {
         _config = config;
         _logger = logger;
+        _sessionDir = Path.Combine(ConfigManager.GetConfigDirectory(), "sessions");
+    }
+
+    /// <summary>
+    /// Visible for testing — allows overriding the session storage directory.
+    /// </summary>
+    public SessionManager(OrcaConfig config, ILogger<SessionManager> logger, string sessionDir)
+    {
+        _config = config;
+        _logger = logger;
+        _sessionDir = sessionDir;
     }
 
     public async Task<string> SaveAsync(Conversation conversation, string? title = null, string? existingId = null)
     {
-        Directory.CreateDirectory(SessionDir);
+        Directory.CreateDirectory(_sessionDir);
 
         var session = ConversationToSession(conversation);
         session.Id = existingId ?? session.Id;
@@ -108,12 +118,12 @@ public sealed class SessionManager
 
     public List<SessionData> List()
     {
-        if (!Directory.Exists(SessionDir))
+        if (!Directory.Exists(_sessionDir))
             return [];
 
         var sessions = new List<SessionData>();
 
-        foreach (var file in Directory.GetFiles(SessionDir, "*.json"))
+        foreach (var file in Directory.GetFiles(_sessionDir, "*.json"))
         {
             try
             {
@@ -147,7 +157,7 @@ public sealed class SessionManager
     /// </summary>
     public async Task<string> ForkAsync(Conversation conversation, string? title, string parentId, int messageIndex)
     {
-        Directory.CreateDirectory(SessionDir);
+        Directory.CreateDirectory(_sessionDir);
 
         var session = ConversationToSession(conversation);
         // Generate a new ID (don't reuse parent's)
@@ -261,6 +271,6 @@ public sealed class SessionManager
         return text.Length > 60 ? text[..57] + "..." : text;
     }
 
-    private static string GetSessionPath(string id) =>
-        Path.Combine(SessionDir, $"{id}.json");
+    private string GetSessionPath(string id) =>
+        Path.Combine(_sessionDir, $"{id}.json");
 }
