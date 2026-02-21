@@ -21,6 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shift+Tab mode cycling** — cycle input mode at the prompt: Normal → Plan → Ask → Normal, with visual indicator (`❯`, `[plan] ❯`, `[ask] ❯`)
 - **Interactive key-by-key input** — InputHandler rewritten with `Console.ReadKey` loop supporting Shift+Tab, Escape to clear, and non-interactive fallback for piped input
 
+## [0.4.0] - 2026-02-21
+
+### Added
+- **`multi_edit` tool** (34 → 35 total tools) — batch edit multiple files atomically with automatic rollback on failure. Validates all edits before applying, and restores original files if any edit fails during write.
+- **Permission glob patterns** — `allowPatterns` and `denyPatterns` in permissions config for fine-grained tool control. Patterns use `ToolName(argGlob)` syntax (e.g., `Bash(git *)`, `write_file(src/**)`). Deny patterns take priority over allow patterns.
+- **File checkpoints** — automatic file snapshots before any file-modifying tool (edit_file, write_file, delete_file, copy_file, move_file). New `/checkpoint` command with `list`, `diff`, `restore`, and `clear` subcommands to manage checkpoints.
+- **Custom slash commands** — create `.md` files in `.orca/commands/` (project) or `~/.openorca/commands/` (global) to define custom slash commands. Template substitution with `{{ARGS}}`, `{{ARG1}}`, `{{ARG2}}`, etc.
+- **Auto memory** — session learnings are automatically saved to `~/.openorca/memory/` (or `.orca/memory/`) at session end and loaded into the system prompt for future sessions. Configurable via `memory.autoMemoryEnabled` and `memory.maxMemoryFiles`.
+- **`/checkpoint` command** — `list` shows checkpointed files, `diff <file>` shows changes since checkpoint, `restore <file>` restores original, `clear` removes all checkpoints.
+- **`/memory` extended** — new subcommands: `auto on|off` (toggle auto memory), `list` (show memory files), `clear-auto` (delete auto-generated memory files).
+- **`PermissionPattern`** record — parses and matches `ToolName(argGlob)` permission patterns with case-insensitive tool name matching and wildcard argument matching.
+- **`CheckpointManager`** — manages file snapshots with JSON manifest, supports snapshot, list, diff, restore, and cleanup operations.
+- **`CustomCommandLoader`** — discovers and loads custom command templates from project and global directories.
+- **`MemoryManager`** — manages auto-learned memory files with project-level and global storage, pruning, and listing.
+
 ## [0.3.3] - 2025-02-20
 
 ### Changed

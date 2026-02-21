@@ -10,6 +10,7 @@ public sealed class OrcaConfig
     public ContextConfig Context { get; set; } = new();
     public AgentConfig Agent { get; set; } = new();
     public HooksConfig Hooks { get; set; } = new();
+    public MemoryConfig Memory { get; set; } = new();
 
     /// <summary>
     /// Runtime-only flag set by --demo CLI argument. Never serialized to config.json.
@@ -54,6 +55,18 @@ public sealed class PermissionsConfig
     public bool AutoApproveModerate { get; set; }
     public List<string> AlwaysApprove { get; set; } = [];
     public List<string> DisabledTools { get; set; } = [];
+
+    /// <summary>
+    /// Glob patterns that auto-allow specific tool+arg combinations.
+    /// Format: "ToolName(argGlob)" — e.g. "Bash(git *)", "Write(src/**)".
+    /// </summary>
+    public List<string> AllowPatterns { get; set; } = [];
+
+    /// <summary>
+    /// Glob patterns that deny specific tool+arg combinations. Deny wins over allow.
+    /// Format: "ToolName(argGlob)" — e.g. "Bash(rm -rf *)", "Bash(sudo *)".
+    /// </summary>
+    public List<string> DenyPatterns { get; set; } = [];
 }
 
 public sealed class SessionConfig
@@ -86,4 +99,10 @@ public sealed class HooksConfig
 {
     public Dictionary<string, string> PreToolHooks { get; set; } = new();
     public Dictionary<string, string> PostToolHooks { get; set; } = new();
+}
+
+public sealed class MemoryConfig
+{
+    public bool AutoMemoryEnabled { get; set; } = true;
+    public int MaxMemoryFiles { get; set; } = 20;
 }

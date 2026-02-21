@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using OpenOrca.Cli.CustomCommands;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Cli.Serialization;
 using OpenOrca.Core.Chat;
@@ -14,6 +15,7 @@ namespace OpenOrca.Cli.Repl;
 
 public sealed class ReplLoop
 {
+    private readonly IChatClient _chatClient;
     private readonly ConversationManager _conversationManager;
     private readonly OrcaConfig _config;
     private readonly InputHandler _inputHandler;
@@ -22,6 +24,7 @@ public sealed class ReplLoop
     private readonly ToolCallRenderer _toolCallRenderer;
     private readonly TerminalPanel _panel;
     private readonly ILogger<ReplLoop> _logger;
+    private readonly MemoryManager _memoryManager;
 
     private readonly ReplState _state;
     private readonly SystemPromptBuilder _systemPromptBuilder;
@@ -43,8 +46,12 @@ public sealed class ReplLoop
         ToolRegistry toolRegistry,
         TerminalPanel panel,
         ReplState state,
+        CheckpointManager checkpointManager,
+        CustomCommandLoader customCommandLoader,
+        MemoryManager memoryManager,
         ILogger<ReplLoop> logger)
     {
+        _chatClient = chatClient;
         _conversationManager = conversationManager;
         _config = config;
         _inputHandler = inputHandler;
@@ -54,15 +61,22 @@ public sealed class ReplLoop
         _panel = panel;
         _state = state;
         _logger = logger;
+        _memoryManager = memoryManager;
 
-        _systemPromptBuilder = new SystemPromptBuilder(config, promptManager);
+        _systemPromptBuilder = new SystemPromptBuilder(config, promptManager, memoryManager);
         var configEditor = new ConfigEditor(config, configManager, logger);
         _toolCallExecutor = new ToolCallExecutor(toolRegistry, toolCallRenderer, _state, logger);
         var toolCallParser = new ToolCallParser(logger);
 
+        // Discover custom commands and register with parser
+        customCommandLoader ??= new CustomCommandLoader();
+        var customCommands = customCommandLoader.DiscoverCommands();
+        commandParser.SetCustomCommandNames(customCommands.Keys);
+
         _commandHandler = new CommandHandler(
             chatClient, config, configManager, sessionManager, toolCallRenderer,
-            conversationManager, _systemPromptBuilder, configEditor, panel, _state, logger);
+            conversationManager, _systemPromptBuilder, configEditor, panel, _state, logger,
+            checkpointManager, customCommandLoader, memoryManager);
 
         _agentLoopRunner = new AgentLoopRunner(
             chatClient, config, streamingRenderer, toolCallParser,
@@ -197,17 +211,22 @@ public sealed class ReplLoop
 
                 if (await _commandHandler.HandleCommandAsync(command, conversation, ct))
                     break;
-                continue;
-            }
 
-            // Persistent Ask mode — run without tools
-            if (_state.Mode == InputMode.Ask)
+                // Custom commands inject a user message — fall through to run the agent loop
+                if (command.Command != SlashCommand.CustomCommand)
+                    continue;
+            }
+            else
             {
-                await RunNoToolsTurnAsync(conversation, input, ct);
-                continue;
-            }
+                // Persistent Ask mode — run without tools
+                if (_state.Mode == InputMode.Ask)
+                {
+                    await RunNoToolsTurnAsync(conversation, input, ct);
+                    continue;
+                }
 
-            conversation.AddUserMessage(input);
+                conversation.AddUserMessage(input);
+            }
 
             try
             {
@@ -277,6 +296,73 @@ public sealed class ReplLoop
             }
 
             AnsiConsole.WriteLine();
+        }
+
+        // Auto-save session learnings at exit
+        await SaveAutoMemoryAsync(conversation, ct);
+    }
+
+    private async Task SaveAutoMemoryAsync(Conversation conversation, CancellationToken ct)
+    {
+        if (!_config.Memory.AutoMemoryEnabled)
+            return;
+
+        // Only save if there was meaningful tool usage (at least 2 turns)
+        if (_state.TotalTurns < 2)
+            return;
+
+        try
+        {
+            var summaryMessages = new List<Microsoft.Extensions.AI.ChatMessage>
+            {
+                new(Microsoft.Extensions.AI.ChatRole.System,
+                    "Based on this session, what project-specific patterns, conventions, or learnings should be remembered? " +
+                    "Write concise bullet points. Only include things that would be useful in future sessions. " +
+                    "If there's nothing noteworthy to remember, respond with just 'NONE'.")
+            };
+
+            // Add a summary of the conversation (last few user/assistant messages)
+            var relevantMessages = conversation.Messages
+                .Where(m => m.Role == Microsoft.Extensions.AI.ChatRole.User || m.Role == Microsoft.Extensions.AI.ChatRole.Assistant)
+                .TakeLast(10);
+
+            foreach (var msg in relevantMessages)
+            {
+                var text = msg.Text ?? string.Join("", msg.Contents.OfType<Microsoft.Extensions.AI.TextContent>().Select(t => t.Text));
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    var truncated = text.Length > 2000 ? text[..2000] + "..." : text;
+                    summaryMessages.Add(new Microsoft.Extensions.AI.ChatMessage(msg.Role, truncated));
+                }
+            }
+
+            var options = new Microsoft.Extensions.AI.ChatOptions
+            {
+                Temperature = 0.3f,
+                MaxOutputTokens = 500,
+            };
+            if (_config.LmStudio.Model is not null)
+                options.ModelId = _config.LmStudio.Model;
+
+            using var memoryCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            memoryCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            var response = await _chatClient.GetResponseAsync(summaryMessages, options, memoryCts.Token);
+            var learnings = string.Join("", response.Messages
+                .SelectMany(m => m.Contents.OfType<Microsoft.Extensions.AI.TextContent>())
+                .Select(t => t.Text)).Trim();
+
+            if (!string.IsNullOrWhiteSpace(learnings) &&
+                !learnings.Equals("NONE", StringComparison.OrdinalIgnoreCase) &&
+                !learnings.StartsWith("NONE", StringComparison.OrdinalIgnoreCase))
+            {
+                await _memoryManager.SaveLearningsAsync(learnings);
+                AnsiConsole.MarkupLine("[dim]Saved session learnings to memory.[/]");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to save auto memory (non-critical)");
         }
     }
 }

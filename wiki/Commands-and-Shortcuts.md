@@ -77,17 +77,21 @@ Show context window usage: estimated tokens, window size, usage percentage, auto
 
 Show session statistics: duration, total turns, output tokens, messages in context, average tokens per turn.
 
-### `/memory [show|edit]`
+### `/memory [show|edit|list|auto|clear-auto]`
 
-View or edit the ORCA.md project instructions file.
+View or edit project instructions and manage auto memory.
 
 ```
 > /memory           # Show current ORCA.md contents
 > /memory show      # Same as above
 > /memory edit      # Open ORCA.md in your $EDITOR (default: notepad on Windows, nano on Linux/macOS)
+> /memory list      # List all auto-generated memory files with previews
+> /memory auto on   # Enable auto memory (saves learnings at session end)
+> /memory auto off  # Disable auto memory
+> /memory clear-auto # Delete all auto-generated memory files
 ```
 
-See [Project Instructions](Project-Instructions) for details on ORCA.md.
+See [Project Instructions](Project-Instructions) for details on ORCA.md and [Auto Memory](Auto-Memory) for the auto memory system.
 
 ### `/doctor`, `/diag`
 
@@ -123,6 +127,19 @@ Export the full conversation to a markdown file.
 ```
 
 The export includes system prompt (truncated), all messages by role, tool calls with arguments, and tool results.
+
+### `/checkpoint [list|diff|restore|clear]`
+
+Manage file checkpoints. OpenOrca automatically snapshots files before any file-modifying tool (edit_file, write_file, delete_file, copy_file, move_file) executes.
+
+```
+> /checkpoint list              # List all checkpointed files with timestamps
+> /checkpoint diff src/main.cs  # Show diff between checkpoint and current file
+> /checkpoint restore src/main.cs  # Restore file to its checkpointed state
+> /checkpoint clear             # Delete all checkpoints for the current session
+```
+
+See [File Checkpoints](File-Checkpoints) for details.
 
 ### `/init`
 
@@ -184,6 +201,47 @@ With arguments, performs a **one-shot ask** — sends the question without tools
 ### `/exit`, `/quit`, `/q`
 
 Exit OpenOrca.
+
+## Custom Commands
+
+You can define project-specific or global custom slash commands by creating `.md` files in command directories.
+
+### Command Directories
+
+| Location | Scope |
+|----------|-------|
+| `.orca/commands/` | Project-level (checked first) |
+| `~/.openorca/commands/` | Global (used as fallback) |
+
+### Creating a Custom Command
+
+Create a markdown file named after the command. For example, `.orca/commands/review-pr.md`:
+
+```markdown
+Review PR #{{ARG1}} thoroughly. Check for:
+- Code style consistency
+- Security issues
+- Test coverage
+{{ARGS}}
+```
+
+### Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{ARGS}}` | All arguments joined with spaces |
+| `{{ARG1}}`, `{{ARG2}}`, ... | Positional arguments |
+
+### Usage
+
+```
+> /review-pr 123                # Runs the review-pr.md template with ARG1=123
+> /deploy staging --verbose     # Runs deploy.md with ARGS="staging --verbose"
+```
+
+Custom commands inject the expanded template as a user message and run it through the agent loop. Built-in commands always take priority over custom commands with the same name.
+
+See [Custom Commands](Custom-Commands) for more details.
 
 ## Shell Shortcut
 

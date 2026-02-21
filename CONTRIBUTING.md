@@ -31,7 +31,7 @@ dotnet run --project src/OpenOrca.Cli
 src/
   OpenOrca.Cli/       # Console application, REPL loop, rendering
   OpenOrca.Core/      # Domain logic (chat, config, sessions, permissions)
-  OpenOrca.Tools/     # Tool implementations (34 tools)
+  OpenOrca.Tools/     # Tool implementations (35 tools)
 tests/
   OpenOrca.Cli.Tests/    # CLI and REPL unit tests
   OpenOrca.Core.Tests/   # Core domain unit tests

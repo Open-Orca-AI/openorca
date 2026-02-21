@@ -23,11 +23,28 @@ public sealed class PermissionManager
         _config = config;
     }
 
-    public async Task<bool> CheckPermissionAsync(string toolName, string riskLevel)
+    public async Task<bool> CheckPermissionAsync(string toolName, string riskLevel, string? argsJson = null)
     {
         // Disabled tools
         if (_config.Permissions.DisabledTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
             return false;
+
+        // Check deny/allow patterns (deny wins)
+        var relevantArg = PermissionPattern.ExtractRelevantArg(toolName, argsJson);
+
+        foreach (var patternStr in _config.Permissions.DenyPatterns)
+        {
+            var pattern = PermissionPattern.Parse(patternStr);
+            if (pattern is not null && pattern.Matches(toolName, relevantArg))
+                return false;
+        }
+
+        foreach (var patternStr in _config.Permissions.AllowPatterns)
+        {
+            var pattern = PermissionPattern.Parse(patternStr);
+            if (pattern is not null && pattern.Matches(toolName, relevantArg))
+                return true;
+        }
 
         // Auto-approve all
         if (_config.Permissions.AutoApproveAll)

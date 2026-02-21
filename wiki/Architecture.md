@@ -8,8 +8,8 @@ This page describes OpenOrca's internal architecture for developers who want to 
 OpenOrca.sln
 ├── src/
 │   ├── OpenOrca.Cli          # Console app, REPL, streaming UI
-│   ├── OpenOrca.Core         # Domain logic (chat, config, sessions, permissions, hooks)
-│   └── OpenOrca.Tools        # 34 tool implementations
+│   ├── OpenOrca.Core         # Domain logic (chat, config, sessions, permissions, hooks, memory)
+│   └── OpenOrca.Tools        # 35 tool implementations
 └── tests/
     ├── OpenOrca.Cli.Tests    # CLI layer unit tests
     ├── OpenOrca.Core.Tests   # Core domain unit tests
@@ -41,14 +41,15 @@ The console application, REPL loop, and all rendering/UI concerns.
 | `Program.cs` | Entry point. Parses CLI args (`--prompt`, `--demo`), loads config, creates services, starts REPL. |
 | `Repl/ReplLoop.cs` | Main REPL loop. Reads user input, dispatches to CommandHandler or AgentLoopRunner. |
 | `Repl/AgentLoopRunner.cs` | Runs the agent loop: streaming, native/text tool switching, retry logic, auto-compaction, server error probing, nudge, and generation cancellation. Max 25 iterations per user message. |
-| `Repl/CommandHandler.cs` | Handles all slash commands (`/help`, `/clear`, `/model`, `/session`, `/plan`, `/compact`, `/rewind`, `/context`, `/stats`, `/memory`, `/doctor`, `/copy`, `/export`). |
+| `Repl/CommandHandler.cs` | Handles all slash commands (`/help`, `/clear`, `/model`, `/session`, `/plan`, `/compact`, `/rewind`, `/context`, `/stats`, `/memory`, `/doctor`, `/copy`, `/export`, `/checkpoint`, custom commands). |
 | `Repl/ToolCallParser.cs` | Parses tool calls from LLM text output. Handles `<tool_call>` tags, `<\|tool_call\|>` tags, `[TOOL_CALL]` tags, `<function_call>` tags, JSON in code fences, bare JSON, and `{"function": {...}}` wrappers. |
 | `Repl/ToolCallExecutor.cs` | Executes parsed tool calls: permission checks, hook running, tool invocation, result formatting. |
-| `Repl/SystemPromptBuilder.cs` | Constructs the system prompt from templates, substituting `{{TOOL_LIST}}`, `{{CWD}}`, `{{PLATFORM}}`, `{{PROJECT_INSTRUCTIONS}}`. |
+| `Repl/SystemPromptBuilder.cs` | Constructs the system prompt from templates, substituting `{{TOOL_LIST}}`, `{{CWD}}`, `{{PLATFORM}}`, `{{PROJECT_INSTRUCTIONS}}`. Also injects auto memory. |
 | `Repl/ReplState.cs` | Mutable state: plan mode, show thinking, session ID, last response, token counts, stopwatch. |
 | `Rendering/StreamingRenderer.cs` | Renders streaming tokens to the terminal with markdown-like formatting. |
 | `Rendering/ThinkingIndicator.cs` | Shows animated thinking indicator and token counter when thinking is hidden. |
 | `Rendering/ToolCallRenderer.cs` | Renders tool call panels (name, arguments, result, timing). |
+| `CustomCommands/CustomCommandLoader.cs` | Discovers and loads custom command templates from `.orca/commands/` and `~/.openorca/commands/`. |
 
 ### Agent Loop Flow
 
@@ -166,14 +167,17 @@ Domain logic with no UI concerns. Can be referenced independently.
 | `Configuration/ConfigManager.cs` | Loads/saves config.json. Handles `~/.openorca/` directory creation. |
 | `Configuration/PromptManager.cs` | Loads and generates system prompt templates. Three-tier resolution: explicit profile → model-specific → default. |
 | `Configuration/ProjectInstructionsLoader.cs` | Finds and loads ORCA.md from the project root. |
+| `Configuration/MemoryManager.cs` | Manages auto-learned memory files in `~/.openorca/memory/` (global) and `.orca/memory/` (project). Handles load, save, prune, list, and clear operations. |
 | `Hooks/HookRunner.cs` | Runs pre/post-tool shell hooks. Pre-hooks can block tool execution (non-zero exit). Post-hooks are fire-and-forget. |
 | `Orchestration/AgentOrchestrator.cs` | Manages sub-agent spawning and lifecycle. |
-| `Permissions/PermissionManager.cs` | Evaluates whether a tool call should be auto-approved or requires user confirmation. |
+| `Permissions/PermissionManager.cs` | Evaluates whether a tool call should be auto-approved or requires user confirmation. Supports allow/deny glob patterns. |
+| `Permissions/PermissionPattern.cs` | Parses and matches `ToolName(argGlob)` permission patterns. Case-insensitive tool name matching with wildcard argument matching. |
 | `Session/SessionManager.cs` | Save, load, list, delete conversation sessions as JSON files. |
+| `Session/CheckpointManager.cs` | Manages file checkpoints — automatic snapshots before file-modifying tool calls, with restore, diff, list, and cleanup operations. |
 
 ## OpenOrca.Tools
 
-All 34 tool implementations, organized by category.
+All 35 tool implementations, organized by category.
 
 ### Directory Structure
 
@@ -185,7 +189,7 @@ OpenOrca.Tools/
 │   └── ToolRiskLevel.cs      # ReadOnly, Moderate, Dangerous
 ├── Registry/
 │   └── ToolRegistry.cs       # Auto-discovery via reflection + ILogger injection
-├── FileSystem/               # read_file, write_file, edit_file, delete_file,
+├── FileSystem/               # read_file, write_file, edit_file, multi_edit, delete_file,
 │                             # copy_file, move_file, mkdir, cd, glob, grep, list_directory
 ├── Shell/                    # bash, start_background_process, get_process_output, stop_process
 ├── Git/                      # git_status, git_diff, git_log, git_commit, git_branch,
