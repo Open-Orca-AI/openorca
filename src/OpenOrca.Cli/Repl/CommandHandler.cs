@@ -37,6 +37,16 @@ internal sealed class CommandHandler
 
     public IList<AITool>? Tools { get; set; }
 
+    /// <summary>
+    /// Delegate to run the agent loop on a conversation. Set by ReplLoop to break circular dependency.
+    /// </summary>
+    public Func<Conversation, CancellationToken, Task>? RunAgentLoop { get; set; }
+
+    /// <summary>
+    /// Streaming renderer reference. Set by ReplLoop for benchmark mode suppression.
+    /// </summary>
+    public StreamingRenderer? StreamingRenderer { get; set; }
+
     public CommandHandler(
         IChatClient chatClient,
         OrcaConfig config,
@@ -180,6 +190,10 @@ internal sealed class CommandHandler
 
             case SlashCommand.Review:
                 await HandleReviewAsync(command.Args, ct);
+                return false;
+
+            case SlashCommand.Benchmark:
+                await HandleBenchmarkAsync(ct);
                 return false;
 
             case SlashCommand.CustomCommand:
@@ -1468,6 +1482,32 @@ internal sealed class CommandHandler
         }
     }
 
+    private async Task HandleBenchmarkAsync(CancellationToken ct)
+    {
+        if (RunAgentLoop is null)
+        {
+            AnsiConsole.MarkupLine("[red]Benchmark is not available (agent loop not wired).[/]");
+            return;
+        }
+
+        var runner = new BenchmarkRunner(_config, _systemPromptBuilder, _logger, RunAgentLoop,
+            _toolCallRenderer, StreamingRenderer!, _state);
+
+        try
+        {
+            await runner.RunAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            AnsiConsole.MarkupLine("[yellow]Benchmark cancelled.[/]");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Benchmark failed");
+            AnsiConsole.MarkupLine($"[red]Benchmark failed: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
     private async Task HandleReviewAsync(string[] args, CancellationToken ct)
     {
         string task;
@@ -1563,6 +1603,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/checkpoint list|diff|restore|clear"), "Manage file checkpoints (auto-saved before edits)");
         table.AddRow(Markup.Escape("/fork [name]"), "Fork current session (creates a branch)");
         table.AddRow(Markup.Escape("/review [staged|commit|file]"), "Run code review via sub-agent");
+        table.AddRow(Markup.Escape("/benchmark, /bench"), "Benchmark all loaded models with a coding task");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 

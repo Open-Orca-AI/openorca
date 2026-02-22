@@ -89,6 +89,9 @@ public sealed class ReplLoop
         _agentLoopRunner = new AgentLoopRunner(
             chatClient, config, streamingRenderer, toolCallParser,
             _toolCallExecutor, _commandHandler, _state, logger);
+
+        _commandHandler.RunAgentLoop = _agentLoopRunner.RunAgentLoopAsync;
+        _commandHandler.StreamingRenderer = streamingRenderer;
     }
 
     public void SetTools(IList<AITool> tools, Func<string, string, CancellationToken, Task<string>> executor)

@@ -6,6 +6,11 @@ public sealed class StreamingRenderer
 {
     private string _buffer = "";
 
+    /// <summary>
+    /// When true, tokens are buffered but not written to the console. Used by benchmark mode.
+    /// </summary>
+    public bool Suppressed { get; set; }
+
     public void Clear()
     {
         _buffer = "";
@@ -14,13 +19,13 @@ public sealed class StreamingRenderer
     public void AppendToken(string token)
     {
         _buffer += token;
-        // Write raw text directly — never parse as Spectre markup
-        Console.Write(token);
+        if (!Suppressed)
+            Console.Write(token);
     }
 
     public void Finish()
     {
-        if (_buffer.Length > 0 && !_buffer.EndsWith('\n'))
+        if (!Suppressed && _buffer.Length > 0 && !_buffer.EndsWith('\n'))
             AnsiConsole.WriteLine();
         _buffer = "";
     }

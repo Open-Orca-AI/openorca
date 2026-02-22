@@ -63,6 +63,12 @@ public sealed class ModelDiscovery
         return [];
     }
 
+    public static void InvalidateCache()
+    {
+        _cachedModels = null;
+        _cacheExpiry = DateTime.MinValue;
+    }
+
     public async Task<bool> CheckConnectivityAsync(CancellationToken ct = default)
     {
         var models = await GetAvailableModelsAsync(ct);
