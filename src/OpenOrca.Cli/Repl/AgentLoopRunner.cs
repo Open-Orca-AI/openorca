@@ -75,6 +75,8 @@ internal sealed class AgentLoopRunner
     public async Task RunAgentLoopAsync(Conversation conversation, CancellationToken ct)
     {
         var nudgeAttempts = 0;
+        var toolsExecuted = false;
+        var summaryRequested = false;
         _toolCallExecutor.ClearRecentErrors();
 
         // Initialize thinking visibility from config on first run
@@ -588,6 +590,7 @@ internal sealed class AgentLoopRunner
                         conversation.AddMessage(assistantMessage);
                         await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
                     }
+                    toolsExecuted = true;
                 }
                 else if (parsedFunctionCalls is { Count: > 0 })
                 {
@@ -601,6 +604,7 @@ internal sealed class AgentLoopRunner
                     }
 
                     await _toolCallExecutor.ExecuteTextToolCallsAsync(parsedFunctionCalls, conversation, genToken);
+                    toolsExecuted = true;
                 }
                 else
                 {
@@ -627,8 +631,18 @@ internal sealed class AgentLoopRunner
                     }
                     else
                     {
-                        _logger.LogDebug("No tool calls — ending agent loop (nudge attempts: {Nudge})", nudgeAttempts);
-                        break;
+                        if (toolsExecuted && !summaryRequested)
+                        {
+                            summaryRequested = true;
+                            _logger.LogDebug("Tools were executed — requesting final summary");
+                            conversation.AddUserMessage(PromptConstants.SummaryRequestMessage);
+                            options.Tools = [];
+                        }
+                        else
+                        {
+                            _logger.LogDebug("No tool calls — ending agent loop (nudge attempts: {Nudge})", nudgeAttempts);
+                            break;
+                        }
                     }
                 }
 
@@ -713,6 +727,7 @@ internal sealed class AgentLoopRunner
                         {
                             anyToolCalls = true;
                             await _toolCallExecutor.ExecuteToolCallsAsync(functionCalls, conversation, genToken);
+                            toolsExecuted = true;
                         }
                     }
 

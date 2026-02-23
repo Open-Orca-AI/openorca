@@ -121,6 +121,19 @@ internal static class PromptConstants
         """;
 
     /// <summary>
+    /// Injected as a user-role message after all tool calls complete to get a clean summary.
+    /// </summary>
+    public const string SummaryRequestMessage = """
+        All tool calls are complete. Please provide a final summary of everything you just did as a markdown document.
+        Structure:
+        - **Summary**: 1–3 sentences describing what you did overall.
+        - **Changes made**: A bulleted list of files created, modified, or deleted, with brief descriptions.
+        - **Key findings**: Any notable discoveries, warnings, or issues encountered (omit if none).
+        - **Suggested next steps**: Actionable follow-ups the user might want to do (omit if none).
+        Keep it concise. Use code formatting for file paths and commands. Do NOT call any tools.
+        """;
+
+    /// <summary>
     /// Injected as a user-role message when a tool has failed 3+ times identically.
     /// </summary>
     public const string RetryLoopRedirectMessage =
