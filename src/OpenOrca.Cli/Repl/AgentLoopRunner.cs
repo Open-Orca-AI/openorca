@@ -34,6 +34,11 @@ internal sealed class AgentLoopRunner
     /// </summary>
     private CancellationTokenSource? _generationCts;
 
+    /// <summary>
+    /// Whether max_tokens negotiation has already been performed this session.
+    /// </summary>
+    private bool _maxTokensNegotiated;
+
     public AgentLoopRunner(
         IChatClient chatClient,
         OrcaConfig config,
@@ -87,6 +92,19 @@ internal sealed class AgentLoopRunner
             }
         }
 
+        // Negotiate max_tokens once per session
+        if (!_maxTokensNegotiated)
+        {
+            _maxTokensNegotiated = true;
+            var negotiator = new MaxTokensNegotiator(SharedProbeClient);
+            var negotiated = await negotiator.NegotiateAsync(_config, _logger, ct);
+            if (negotiated is not null)
+            {
+                _config.LmStudio.MaxTokens = negotiated.Value;
+                AnsiConsole.MarkupLine($"[grey]Negotiated max output tokens: {negotiated.Value}[/]");
+            }
+        }
+
         // Create generation-scoped CTS linked to the app-level token
         _generationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var genToken = _generationCts.Token;
@@ -135,6 +153,7 @@ internal sealed class AgentLoopRunner
             using var thinking = new ThinkingIndicator(realStdout);
             thinking.BudgetTokens = _config.Thinking.BudgetTokens;
             var thinkFilter = new ThinkTagFilter();
+            var toolCallFilter = new ToolCallTagFilter();
             var firstToken = true;
             var firstResponseToken = true;
             var thinkingVisible = _state.ShowThinking;
@@ -143,6 +162,8 @@ internal sealed class AgentLoopRunner
             var thinkingTokenCount = 0;
             var budgetExceeded = false;
             var budgetTokens = _config.Thinking.BudgetTokens;
+            var mdStream = new MarkdownStreamRenderer();
+            var useMarkdownStream = !Console.IsOutputRedirected && !_streamingRenderer.Suppressed;
 
             var realStderr = Console.Error;
             void RedirectConsole()
@@ -177,6 +198,7 @@ internal sealed class AgentLoopRunner
                         {
                             if (thinkingVisible)
                             {
+                                mdStream.Clear(); // clear markdown output if active
                                 thinking.Stop();
                                 RestoreConsole();
                                 Console.Write("\x1b[36m");
@@ -257,7 +279,7 @@ internal sealed class AgentLoopRunner
 
                             if (thinkingVisible)
                             {
-                                _streamingRenderer.AppendToken(textContent.Text);
+                                _streamingRenderer.AppendToken(toolCallFilter.Filter(textContent.Text));
                             }
                             else
                             {
@@ -274,15 +296,25 @@ internal sealed class AgentLoopRunner
 
                                 if (responseText.Length > 0)
                                 {
-                                    if (firstResponseToken)
+                                    var filtered = toolCallFilter.Filter(responseText);
+                                    if (filtered.Length > 0)
                                     {
-                                        // First response token — stop thinking indicator, show response
-                                        thinking.Stop();
-                                        RestoreConsole();
-                                        Console.Write("\x1b[36m");
-                                        firstResponseToken = false;
+                                        if (firstResponseToken)
+                                        {
+                                            // First response token — stop thinking indicator, show response
+                                            thinking.Stop();
+                                            RestoreConsole();
+                                            if (useMarkdownStream)
+                                                mdStream.Start();
+                                            else
+                                                Console.Write("\x1b[36m");
+                                            firstResponseToken = false;
+                                        }
+                                        if (useMarkdownStream)
+                                            mdStream.AppendToken(filtered);
+                                        else
+                                            _streamingRenderer.AppendToken(filtered);
                                     }
-                                    _streamingRenderer.AppendToken(responseText);
                                 }
                             }
                         }
@@ -359,7 +391,7 @@ internal sealed class AgentLoopRunner
 
                                 if (thinkingVisible)
                                 {
-                                    _streamingRenderer.AppendToken(tc.Text);
+                                    _streamingRenderer.AppendToken(toolCallFilter.Filter(tc.Text));
                                 }
                                 else
                                 {
@@ -375,14 +407,24 @@ internal sealed class AgentLoopRunner
 
                                     if (responseText.Length > 0)
                                     {
-                                        if (firstResponseToken)
+                                        var filtered = toolCallFilter.Filter(responseText);
+                                        if (filtered.Length > 0)
                                         {
-                                            thinking.Stop();
-                                            RestoreConsole();
-                                            Console.Write("\x1b[36m");
-                                            firstResponseToken = false;
+                                            if (firstResponseToken)
+                                            {
+                                                thinking.Stop();
+                                                RestoreConsole();
+                                                if (useMarkdownStream)
+                                                    mdStream.Start();
+                                                else
+                                                    Console.Write("\x1b[36m");
+                                                firstResponseToken = false;
+                                            }
+                                            if (useMarkdownStream)
+                                                mdStream.AppendToken(filtered);
+                                            else
+                                                _streamingRenderer.AppendToken(filtered);
                                         }
-                                        _streamingRenderer.AppendToken(responseText);
                                     }
                                 }
                             }
@@ -436,8 +478,13 @@ internal sealed class AgentLoopRunner
                 else if (!firstResponseToken)
                 {
                     // Response tokens were streamed visibly — finish the output
-                    _streamingRenderer.Finish();
-                    Console.Write("\x1b[0m");
+                    if (mdStream.Active)
+                        mdStream.Finish();
+                    else
+                    {
+                        _streamingRenderer.Finish();
+                        Console.Write("\x1b[0m");
+                    }
                 }
                 else
                 {
@@ -605,6 +652,7 @@ internal sealed class AgentLoopRunner
             {
                 thinking.Stop();
                 RestoreConsole();
+                mdStream.Finish();
                 _streamingRenderer.Finish();
                 Console.Write("\x1b[0m");
                 _logger.LogError(ex, "HTTP error communicating with LLM server");
@@ -619,6 +667,7 @@ internal sealed class AgentLoopRunner
             {
                 thinking.Stop();
                 RestoreConsole();
+                mdStream.Finish();
                 _streamingRenderer.Finish();
                 Console.Write("\x1b[0m");
 
