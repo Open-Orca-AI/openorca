@@ -29,6 +29,9 @@ internal static class CliConstants
     // Tool defaults
     public const int DefaultMaxSearchResults = 500;
 
+    // Tool output preview
+    public const int ToolOutputPreviewLines = 7;
+
     // Parallel tool execution
     public const int MaxParallelToolCalls = 8;
 }

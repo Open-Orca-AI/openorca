@@ -53,8 +53,8 @@ public sealed class BashTool : IOrcaTool
     {
         var command = args.GetProperty("command").GetString()!;
         var workDir = args.TryGetProperty("working_directory", out var wd) ? wd.GetString() ?? "." : ".";
-        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? ts.GetInt32() : 120;
-        var idleTimeoutSec = args.TryGetProperty("idle_timeout_seconds", out var its) ? its.GetInt32() : IdleTimeoutSeconds;
+        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? GetIntTolerant(ts, 120) : 120;
+        var idleTimeoutSec = args.TryGetProperty("idle_timeout_seconds", out var its) ? GetIntTolerant(its, IdleTimeoutSeconds) : IdleTimeoutSeconds;
 
         workDir = Path.GetFullPath(workDir);
         Logger?.LogDebug("Executing bash: {Command} in {WorkDir} (timeout: {Timeout}s, idle: {Idle}s)",
@@ -219,5 +219,17 @@ public sealed class BashTool : IOrcaTool
         {
             return ToolResult.Error($"Failed to execute command: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Parse an integer from a JsonElement, tolerating string-typed numbers from LLMs.
+    /// </summary>
+    private static int GetIntTolerant(JsonElement element, int defaultValue)
+    {
+        if (element.ValueKind == JsonValueKind.Number)
+            return element.GetInt32();
+        if (element.ValueKind == JsonValueKind.String && int.TryParse(element.GetString(), out var parsed))
+            return parsed;
+        return defaultValue;
     }
 }

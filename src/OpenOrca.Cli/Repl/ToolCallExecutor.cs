@@ -122,6 +122,8 @@ internal sealed class ToolCallExecutor
                 _toolCallRenderer.RenderToolCall(toolName, args);
             }
 
+            // Strip _reason before execution — it's only for display
+            args = StripReason(args);
             callData[i] = (toolName, args, call, preResult, preError);
         }
 
@@ -233,6 +235,8 @@ internal sealed class ToolCallExecutor
                 _toolCallRenderer.RenderToolCall(toolName, args);
             }
 
+            // Strip _reason before execution — it's only for display
+            args = StripReason(args);
             callData[i] = (toolName, args, preResult, preError);
         }
 
@@ -431,6 +435,40 @@ internal sealed class ToolCallExecutor
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Remove the _reason field from tool arguments JSON so it doesn't reach the tool executor.
+    /// </summary>
+    private static string StripReason(string argsJson)
+    {
+        if (string.IsNullOrWhiteSpace(argsJson) || argsJson == "{}" || !argsJson.Contains("_reason"))
+            return argsJson;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(argsJson);
+            if (!doc.RootElement.TryGetProperty("_reason", out _))
+                return argsJson;
+
+            using var ms = new System.IO.MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms))
+            {
+                writer.WriteStartObject();
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    if (prop.Name != "_reason")
+                        prop.WriteTo(writer);
+                }
+                writer.WriteEndObject();
+            }
+
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+        catch
+        {
+            return argsJson;
+        }
     }
 
     private string ApplyRetryDetection(string toolName, string argsJson, string result)

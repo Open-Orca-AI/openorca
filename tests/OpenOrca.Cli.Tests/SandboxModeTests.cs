@@ -22,7 +22,7 @@ public class SandboxModeTests
         registry.Register(new FakeDangerousTool());
 
         var state = new ReplState();
-        var renderer = new ToolCallRenderer();
+        var renderer = new ToolCallRenderer(state);
         return new ToolCallExecutor(registry, renderer, state, config, NullLogger<ToolCallExecutor>.Instance);
     }
 

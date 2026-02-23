@@ -16,8 +16,8 @@ public class ToolCallExecutorTests
         var registry = new ToolRegistry(NullLogger<ToolRegistry>.Instance);
         registry.DiscoverTools(typeof(ToolRegistry).Assembly);
 
-        var renderer = new ToolCallRenderer();
         state ??= new ReplState();
+        var renderer = new ToolCallRenderer(state);
         config ??= new OpenOrca.Core.Configuration.OrcaConfig();
 
         return new ToolCallExecutor(registry, renderer, state, config, NullLogger.Instance);

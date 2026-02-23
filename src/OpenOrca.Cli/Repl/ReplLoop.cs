@@ -244,6 +244,7 @@ public sealed class ReplLoop
                 }
 
                 input = InputPreprocessor.ExpandFileReferences(input);
+                AnsiConsole.MarkupLine($"[on darkblue]\U0001f477 user: {Markup.Escape(input)}[/]");
                 conversation.AddUserMessage(input);
             }
 

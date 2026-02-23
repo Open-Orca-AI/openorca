@@ -96,6 +96,7 @@ internal sealed class SystemPromptBuilder
             - When you need to understand code, USE read_file, glob, or grep to look at it. Do NOT guess.
             - ALWAYS take action with tools. NEVER just describe what you would do.
             - Your response MUST contain <tool_call> tags when action is needed. Text-only responses with no tool calls are WRONG.
+            - ALWAYS include a "_reason" field in tool call arguments — a short explanation of why you're calling this tool (e.g., "Check what files exist in the project"). This is shown to the user and stripped before execution.
             - You can call multiple tools in a single response. When tools are independent (no output from one is needed as input to another), include them all at once for parallel execution.
             - After making changes, verify your work by reading back files or running tests.
             - The write_file 'content' argument MUST contain the FULL file content (actual code/text). NEVER pass empty content or role tags.
@@ -148,9 +149,12 @@ internal sealed class SystemPromptBuilder
             6. Give a final summary (see FINAL SUMMARY FORMAT below)
 
             FINAL SUMMARY FORMAT:
-            When you have finished all tool calls and are ready to hand control back to the user,
-            your final response MUST be a markdown summary. Do NOT make any more tool calls in this response.
-            Structure it like this:
+            When you have finished ALL tool calls and are ready to hand control back to the user,
+            your final response MUST be a markdown summary with ZERO tool calls.
+            CRITICAL: If you still need to call a tool, you are NOT ready for the summary — do the tool call FIRST,
+            get the result, and ONLY write the summary once all work is truly complete.
+            A response that contains BOTH a summary AND a <tool_call> is WRONG — pick one or the other.
+            Structure the summary like this:
             - **Summary**: 1–3 sentences describing what you did overall.
             - **Changes made**: A bulleted list of files created, modified, or deleted, with brief descriptions.
             - **Key findings**: Any notable discoveries, warnings, or issues encountered (omit if none).
