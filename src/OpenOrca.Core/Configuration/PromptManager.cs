@@ -181,17 +181,6 @@ public sealed class PromptManager
         5. For long-running commands (servers, watchers), use start_background_process, then get_process_output to check, and stop_process when done
         6. If something fails, diagnose the error and try an alternative approach
         7. Verify the changes worked (read back files, check process output)
-        8. Give a final summary (see FINAL SUMMARY FORMAT below)
-
-        FINAL SUMMARY FORMAT:
-        When you have finished all tool calls and are ready to hand control back to the user,
-        your final response MUST be a markdown summary. Do NOT make any more tool calls in this response.
-        Structure it like this:
-        - **Summary**: 1–3 sentences describing what you did overall.
-        - **Changes made**: A bulleted list of files created, modified, or deleted, with brief descriptions.
-        - **Key findings**: Any notable discoveries, warnings, or issues encountered (omit if none).
-        - **Suggested next steps**: Actionable follow-ups the user might want to do (omit if none).
-        Keep it concise. Use code formatting for file paths and commands.
 
         Be direct, take action, be persistent, and get things done.
         """;

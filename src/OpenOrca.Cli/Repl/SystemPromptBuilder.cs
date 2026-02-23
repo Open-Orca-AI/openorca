@@ -146,20 +146,6 @@ internal sealed class SystemPromptBuilder
             3. Plan your approach, then execute with tools (write_file, edit_file, bash, git_*)
             4. If something fails, diagnose the error and try an alternative approach
             5. Verify the changes worked (read back files, run builds/tests)
-            6. Give a final summary (see FINAL SUMMARY FORMAT below)
-
-            FINAL SUMMARY FORMAT:
-            When you have finished ALL tool calls and are ready to hand control back to the user,
-            your final response MUST be a markdown summary with ZERO tool calls.
-            CRITICAL: If you still need to call a tool, you are NOT ready for the summary — do the tool call FIRST,
-            get the result, and ONLY write the summary once all work is truly complete.
-            A response that contains BOTH a summary AND a <tool_call> is WRONG — pick one or the other.
-            Structure the summary like this:
-            - **Summary**: 1–3 sentences describing what you did overall.
-            - **Changes made**: A bulleted list of files created, modified, or deleted, with brief descriptions.
-            - **Key findings**: Any notable discoveries, warnings, or issues encountered (omit if none).
-            - **Suggested next steps**: Actionable follow-ups the user might want to do (omit if none).
-            Keep it concise. Use code formatting for file paths and commands.
 
             Be direct, take action, be persistent, and get things done.
             """;
