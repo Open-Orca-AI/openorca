@@ -9,7 +9,7 @@ public static class TaskStore
 {
     private static readonly List<TaskItem> Tasks = [];
     private static int _nextId = 1;
-    private static readonly object Lock = new();
+    private static readonly Lock Lock = new();
 
     public static int Add(string description)
     {

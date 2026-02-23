@@ -442,8 +442,7 @@ internal sealed class CommandHandler
                         Temperature = 0.3f,
                         MaxOutputTokens = CliConstants.CompactMaxOutputTokens,
                     };
-                    if (_config.LmStudio.Model is not null)
-                        options.ModelId = _config.LmStudio.Model;
+                    options.ModelId ??= _config.LmStudio.Model;
 
                     var response = await _chatClient.GetResponseAsync(summaryMessages, options, ct);
                     summary = string.Join("", response.Messages
