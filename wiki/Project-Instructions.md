@@ -105,12 +105,12 @@ This is a Node.js REST API using Express and PostgreSQL.
 ```markdown
 # Project Instructions
 
-OpenOrca — a .NET 9 CLI AI orchestrator.
+OpenOrca — a .NET 10 CLI AI orchestrator.
 
 ## Architecture
 - `src/OpenOrca.Cli` — Console app, REPL, streaming renderer
 - `src/OpenOrca.Core` — Domain logic (chat, config, sessions, permissions)
-- `src/OpenOrca.Tools` — 34 tool implementations
+- `src/OpenOrca.Tools` — 35 tool implementations
 
 ## Conventions
 - File-scoped namespaces

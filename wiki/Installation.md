@@ -6,7 +6,7 @@
 - A downloaded model (see [Model Setup](Model-Setup) for recommendations)
 
 For building from source:
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Git
 
 ## Download a Release
@@ -82,7 +82,7 @@ dotnet publish src/OpenOrca.Cli -c Release -r osx-x64 --self-contained -p:Publis
 dotnet publish src/OpenOrca.Cli -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true
 ```
 
-Output lands in `src/OpenOrca.Cli/bin/Release/net9.0/<rid>/publish/`.
+Output lands in `src/OpenOrca.Cli/bin/Release/net10.0/<rid>/publish/`.
 
 ## Set Up LM Studio
 

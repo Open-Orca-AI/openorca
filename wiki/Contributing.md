@@ -4,7 +4,7 @@ Thank you for your interest in contributing to OpenOrca! This guide covers every
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [LM Studio](https://lmstudio.ai/) (for integration tests and local development)
 - Git
 - A code editor (VS Code, Rider, Visual Studio)
@@ -32,7 +32,7 @@ dotnet run --project src/OpenOrca.Cli
 src/
   OpenOrca.Cli/       # Console application, REPL loop, rendering
   OpenOrca.Core/      # Domain logic (chat, config, sessions, permissions)
-  OpenOrca.Tools/     # Tool implementations (34 tools)
+  OpenOrca.Tools/     # Tool implementations (35 tools)
 tests/
   OpenOrca.Cli.Tests/    # CLI and REPL unit tests
   OpenOrca.Core.Tests/   # Core domain unit tests
@@ -94,7 +94,7 @@ The harness runs 7 tests:
 4. Native tool calling
 5. Text-based tool calling
 6. Nudge mechanism
-7. Realistic scenario (full system prompt + all 34 tools + real user prompt)
+7. Realistic scenario (full system prompt + all 35 tools + real user prompt)
 
 These tests are **not** run in CI (they require a local LLM server).
 

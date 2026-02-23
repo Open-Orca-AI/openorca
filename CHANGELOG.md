@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-23
+
+### Changed
+- **Upgraded to .NET 10** — TFM `net9.0` → `net10.0`, SDK 10.0, all CI/CD workflows updated
+- **Migrated to xUnit v3** — `xunit` 2.9.3 → `xunit.v3` 3.2.2, `xunit.runner.visualstudio` 3.1.5, `Microsoft.NET.Test.Sdk` 18.0.1
+- **Updated NuGet packages** — Markdig 0.37→0.45, Microsoft.Extensions.Hosting 9.0→10.0.3, Microsoft.Extensions.AI 9.5→10.3, Microsoft.Extensions.Options/Logging.Abstractions/FileSystemGlobbing 9.0.5→10.0.3
+- **C# 14 `System.Threading.Lock`** — replaced `object` locks with dedicated `Lock` type in `FileLoggerProvider`, `ConversationManager`, `BackgroundProcessManager`, `TaskStore`
+- **C# modernization** — simplified null-check-then-assign patterns to `??=` for `ModelId` assignment
+- **SelfContained build fix** — made `<SelfContained>` conditional on `RuntimeIdentifier` to fix NETSDK1151 with test project references
+
+## [0.5.0] - 2026-02-22
+
 ### Added
 - **`--continue` / `-c` CLI flag** — resume the most recent saved session on startup
 - **`--resume` / `-r <id>` CLI flag** — resume a specific session by ID on startup

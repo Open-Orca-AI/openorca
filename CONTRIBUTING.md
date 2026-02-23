@@ -4,7 +4,7 @@ Thank you for your interest in contributing to OpenOrca! This guide will help yo
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [LM Studio](https://lmstudio.ai/) (for integration tests and local development)
 - Git
 

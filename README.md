@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml"><img src="https://github.com/Open-Orca-AI/openorca/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="https://dotnet.microsoft.com/download/dotnet/9.0"><img src="https://img.shields.io/badge/.NET-9.0-purple.svg" alt=".NET 9"></a>
+  <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-10.0-purple.svg" alt=".NET 10"></a>
 </p>
 
 ![OpenOrca Demo](demo/demo.gif)
@@ -61,7 +61,7 @@ Extract and add to your PATH.
 
 ### Build from Source
 
-Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```bash
 git clone https://github.com/openorca-ai/openorca.git
@@ -74,7 +74,7 @@ To publish a self-contained executable:
 
 ```bash
 dotnet publish src/OpenOrca.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-# Output: src/OpenOrca.Cli/bin/Release/net9.0/win-x64/publish/openorca.exe
+# Output: src/OpenOrca.Cli/bin/Release/net10.0/win-x64/publish/openorca.exe
 ```
 
 ## Quick Start
