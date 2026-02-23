@@ -39,14 +39,16 @@ internal static class PromptConstants
     /// Sent when a tool call was truncated (model hit token limit mid-generation).
     /// </summary>
     public const string TruncatedToolCallMessage = """
-        Your previous response was cut off — the <tool_call> tag was never closed and the tool call content was incomplete.
-        This happens when the output is too long for a single response.
+        Your previous response was cut off mid-tool-call (the <tool_call> tag was never closed).
+        This means your output exceeded the token limit.
 
-        IMPORTANT: Do NOT repeat the entire file content. Instead, break the task into smaller steps:
-        1. First, write a MINIMAL version of the file (just the basic structure/skeleton, under 100 lines).
-        2. Then use edit_file to add more functionality incrementally.
+        To avoid this, follow these rules:
+        1. NEVER rewrite an entire file with write_file if you can use edit_file instead.
+        2. If you must create a new file, write a SHORT skeleton first (under 100 lines), then use edit_file to add sections incrementally.
+        3. Keep each tool call's arguments under ~3000 characters.
+        4. Break large tasks into multiple small tool calls rather than one large one.
 
-        Start now — write a short, working version of the file using write_file.
+        Resume your task now using smaller tool calls.
         """;
 
     /// <summary>

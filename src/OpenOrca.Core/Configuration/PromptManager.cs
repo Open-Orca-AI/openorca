@@ -240,6 +240,12 @@ public sealed class PromptManager
             - Decompose complex operations into smaller steps that are each more likely to succeed.
             - Commands run from CWD by default. Use full relative paths to files you created (e.g., 'python snake_game/snake.py' not 'python snake.py').
             - NEVER run commands that might not terminate (servers, REPLs, watchers, GUIs, interactive programs) with the bash tool — use start_background_process instead. The bash tool has a timeout and will kill the process.
+
+            OUTPUT SIZE MANAGEMENT:
+            - Prefer edit_file over write_file when modifying existing files — read the file first, then make targeted edits.
+            - When creating new files, write a concise skeleton first, then add functionality with edit_file.
+            - Keep individual tool call arguments compact. If file content exceeds ~200 lines, break it into multiple steps.
+            - NEVER dump an entire file into write_file when only a few lines need to change.
             """;
     }
 
