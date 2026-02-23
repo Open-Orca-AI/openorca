@@ -34,6 +34,15 @@ Think of it as a local, private, open-source alternative to cloud-based AI codin
 - **Hooks** — run custom shell commands before/after tool execution
 - **Permission system** — approve tool calls by risk level (read-only, moderate, dangerous)
 - **Sub-agent spawning** — delegate focused tasks to independent agent instances
+- **Custom agents** — define project-specific agent types in `.orca/agents/*.md` with YAML frontmatter
+- **MCP client** — connect to Model Context Protocol servers for additional tools
+- **@file context** — inline file contents in prompts with `@path/to/file`
+- **Session forking** — branch conversations with `/fork`, view hierarchy with `/session tree`
+- **Code review** — run `/review` to spawn a review agent on uncommitted, staged, or specific changes
+- **Rich diff rendering** — colorized unified diffs for `/diff` and `/checkpoint diff`
+- **Sandbox mode** — restrict to read-only tools with `--sandbox`, limit file access with `--allow-dir`
+- **Thinking budget** — cap model reasoning tokens and toggle visibility with Ctrl+O
+- **Model benchmarking** — run `/benchmark` to test all loaded models with a coding task
 
 ## Installation
 
@@ -102,7 +111,10 @@ openorca --prompt "List all .cs files in this project"
 | `--continue`, `-c` | Resume the most recent saved session |
 | `--resume <id>`, `-r <id>` | Resume a specific session by ID |
 | `--allow <tools>` | Pre-approve tools (comma-separated) for non-interactive mode |
-| `--output json` | Output structured JSON (with `--prompt`): `{"response":"...","tokens":N}` |
+| `--output json` | Output structured JSON (with `--prompt`) |
+| `--print "..."`, `-p "..."` | Shorthand for `--prompt` + `--output json` |
+| `--sandbox`, `--simple` | Restrict to read-only tools only |
+| `--allow-dir <path>` | Restrict file operations to a specific directory |
 | `--demo` | Run in demo mode without an LLM server |
 
 **CI/CD example:**
@@ -154,6 +166,25 @@ Config is stored at `~/.openorca/config.json`. Edit interactively with `/config`
   "memory": {
     "autoMemoryEnabled": true,
     "maxMemoryFiles": 20
+  },
+  "thinking": {
+    "budgetTokens": 0,
+    "defaultVisible": false
+  },
+  "shell": {
+    "idleTimeoutSeconds": 15
+  },
+  "agent": {
+    "maxIterations": 15,
+    "timeoutSeconds": 300
+  },
+  "mcpServers": {
+    "example-server": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"],
+      "env": {},
+      "enabled": true
+    }
   }
 }
 ```
@@ -181,7 +212,8 @@ OpenOrca.sln
 │   │   ├── Client/           # LmStudioClientFactory, ModelDiscovery
 │   │   ├── Configuration/    # OrcaConfig, ConfigManager, PromptManager, MemoryManager
 │   │   ├── Hooks/            # HookRunner
-│   │   ├── Orchestration/    # AgentOrchestrator
+│   │   ├── Mcp/              # McpClient, McpManager (JSON-RPC 2.0 over stdio)
+│   │   ├── Orchestration/    # AgentOrchestrator, AgentTypeRegistry, CustomAgentLoader
 │   │   ├── Permissions/      # PermissionManager, PermissionPattern
 │   │   └── Session/          # SessionManager, CheckpointManager
 │   └── OpenOrca.Tools         # 35 tool implementations
@@ -194,7 +226,8 @@ OpenOrca.sln
 │       ├── Archive/          # archive (zip create/extract/list)
 │       ├── Interactive/      # ask_user
 │       ├── Utility/          # think, task_list, env
-│       └── Agent/            # spawn_agent
+│       ├── Agent/            # spawn_agent
+│       └── Mcp/              # McpProxyTool (dynamic MCP server tools)
 └── tests/
     ├── OpenOrca.Cli.Tests     # CLI and REPL unit tests
     ├── OpenOrca.Core.Tests    # Core domain unit tests
@@ -294,7 +327,11 @@ OpenOrca.sln
 | `/rename <name>` | Rename current session |
 | `/add <file> [...]` | Add file contents to conversation context |
 | `/ask [question]` | Toggle ask mode (no args) or one-shot ask (with args) |
+| `/fork [name]`, `/f!` | Fork current session into a new branch |
+| `/review [staged\|commit\|file]` | Run code review via sub-agent |
+| `/benchmark`, `/bench` | Benchmark all loaded models with a coding task |
 | `!<command>` | Run shell command directly |
+| `@file` | Inline file contents in prompts (e.g., `explain @src/Program.cs`) |
 | `/<custom>` | Run a custom command from `.orca/commands/` |
 | `/exit`, `/quit`, `/q` | Exit |
 
