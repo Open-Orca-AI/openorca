@@ -135,54 +135,13 @@ internal sealed class ToolCallParser
             }
         }
 
-        // Try to parse each candidate
+        // Try to parse each candidate — a candidate may contain multiple JSON objects
+        // (some models emit several tool calls in a single <tool_call> block)
         foreach (var candidate in candidates)
         {
-            try
+            foreach (var jsonStr in SplitJsonObjects(candidate))
             {
-                using var doc = JsonDocument.Parse(candidate);
-                var root = doc.RootElement;
-
-                string? name = null;
-                IDictionary<string, object?>? arguments = null;
-
-                // Format: {"name": "tool_name", "arguments": {...}}
-                if (root.TryGetProperty("name", out var nameEl))
-                {
-                    name = nameEl.GetString();
-
-                    if (root.TryGetProperty("arguments", out var argsEl) &&
-                        argsEl.ValueKind == JsonValueKind.Object)
-                    {
-                        arguments = ParseArguments(argsEl);
-                    }
-                    else if (root.TryGetProperty("parameters", out var paramsEl) &&
-                             paramsEl.ValueKind == JsonValueKind.Object)
-                    {
-                        arguments = ParseArguments(paramsEl);
-                    }
-                }
-                // Format: {"function": {"name": "...", "arguments": {...}}}
-                else if (root.TryGetProperty("function", out var funcEl) &&
-                         funcEl.ValueKind == JsonValueKind.Object)
-                {
-                    name = funcEl.TryGetProperty("name", out var fnName) ? fnName.GetString() : null;
-                    if (funcEl.TryGetProperty("arguments", out var fnArgs) &&
-                        fnArgs.ValueKind == JsonValueKind.Object)
-                    {
-                        arguments = ParseArguments(fnArgs);
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(name))
-                {
-                    var callId = $"parsed_{Guid.NewGuid():N}";
-                    results.Add(new FunctionCallContent(callId, name, arguments));
-                }
-            }
-            catch (JsonException)
-            {
-                // Not valid JSON, skip
+                TryParseToolCall(jsonStr, results);
             }
         }
 
@@ -226,6 +185,136 @@ internal sealed class ToolCallParser
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Try to parse a single JSON string as a tool call and add it to results.
+    /// </summary>
+    private static void TryParseToolCall(string json, List<FunctionCallContent> results)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            string? name = null;
+            IDictionary<string, object?>? arguments = null;
+
+            // Format: {"name": "tool_name", "arguments": {...}}
+            if (root.TryGetProperty("name", out var nameEl))
+            {
+                name = nameEl.GetString();
+
+                if (root.TryGetProperty("arguments", out var argsEl) &&
+                    argsEl.ValueKind == JsonValueKind.Object)
+                {
+                    arguments = ParseArguments(argsEl);
+                }
+                else if (root.TryGetProperty("parameters", out var paramsEl) &&
+                         paramsEl.ValueKind == JsonValueKind.Object)
+                {
+                    arguments = ParseArguments(paramsEl);
+                }
+            }
+            // Format: {"function": {"name": "...", "arguments": {...}}}
+            else if (root.TryGetProperty("function", out var funcEl) &&
+                     funcEl.ValueKind == JsonValueKind.Object)
+            {
+                name = funcEl.TryGetProperty("name", out var fnName) ? fnName.GetString() : null;
+                if (funcEl.TryGetProperty("arguments", out var fnArgs) &&
+                    fnArgs.ValueKind == JsonValueKind.Object)
+                {
+                    arguments = ParseArguments(fnArgs);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                var callId = $"parsed_{Guid.NewGuid():N}";
+                results.Add(new FunctionCallContent(callId, name, arguments));
+            }
+        }
+        catch (JsonException)
+        {
+            // Not valid JSON, skip
+        }
+    }
+
+    /// <summary>
+    /// Split a string that may contain multiple concatenated JSON objects into individual JSON strings.
+    /// Handles: "{...}\n{...}\n{...}" — common when models emit multiple tool calls in one block.
+    /// Uses brace-depth counting to find object boundaries.
+    /// </summary>
+    internal static List<string> SplitJsonObjects(string text)
+    {
+        var results = new List<string>();
+        if (string.IsNullOrWhiteSpace(text))
+            return results;
+
+        // Fast path: if it parses as a single valid JSON object, return it directly
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                results.Add(text);
+                return results;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not a single JSON object — fall through to multi-object splitting
+        }
+
+        // Brace-depth scanning: find each top-level { ... } object
+        var depth = 0;
+        var inString = false;
+        var escape = false;
+        var start = -1;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+
+            if (ch == '\\' && inString)
+            {
+                escape = true;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+                continue;
+
+            if (ch == '{')
+            {
+                if (depth == 0)
+                    start = i;
+                depth++;
+            }
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0 && start >= 0)
+                {
+                    results.Add(text[start..(i + 1)]);
+                    start = -1;
+                }
+            }
+        }
+
+        return results;
     }
 
     internal static IDictionary<string, object?> ParseArguments(JsonElement argsEl)
