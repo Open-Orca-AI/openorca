@@ -2,7 +2,7 @@ namespace OpenOrca.Core.Chat;
 
 public sealed class ConversationManager
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly Dictionary<string, Conversation> _conversations = [];
 
     private volatile Conversation _active = new();

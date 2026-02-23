@@ -361,8 +361,7 @@ public sealed class ReplLoop
                 Temperature = 0.3f,
                 MaxOutputTokens = 500,
             };
-            if (_config.LmStudio.Model is not null)
-                options.ModelId = _config.LmStudio.Model;
+            options.ModelId ??= _config.LmStudio.Model;
 
             using var memoryCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             memoryCts.CancelAfter(TimeSpan.FromSeconds(30));

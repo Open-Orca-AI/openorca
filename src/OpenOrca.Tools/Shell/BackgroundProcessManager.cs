@@ -96,7 +96,7 @@ public sealed class ManagedProcess : IDisposable
 {
     private const int MaxLines = 1000;
     private readonly List<string> _outputLines = new();
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly Process _process;
 
     public string Id { get; }

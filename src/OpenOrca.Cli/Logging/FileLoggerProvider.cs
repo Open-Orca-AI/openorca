@@ -13,7 +13,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private readonly ConcurrentDictionary<string, FileLogger> _loggers = new();
     private readonly LogLevel _minLevel;
     private StreamWriter? _writer;
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private string? _currentDate;
 
     public FileLoggerProvider(LogLevel minLevel = LogLevel.Debug)

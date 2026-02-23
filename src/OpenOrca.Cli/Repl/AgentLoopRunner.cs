@@ -143,8 +143,7 @@ internal sealed class AgentLoopRunner
                 Tools = useNativeTools ? _toolCallExecutor.GetToolsForMode() : []
             };
 
-            if (_config.LmStudio.Model is not null)
-                options.ModelId = _config.LmStudio.Model;
+            options.ModelId ??= _config.LmStudio.Model;
 
             _streamingRenderer.Clear();
 
