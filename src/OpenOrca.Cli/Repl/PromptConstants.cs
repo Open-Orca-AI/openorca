@@ -117,6 +117,7 @@ internal static class PromptConstants
         - After all tool results are returned, you can make further calls if needed.
         - NEVER just show code — use write_file to create files, bash to run commands.
         - Every response where you need to act MUST contain at least one <tool_call>.
+        - ALWAYS include a "_reason" field in your tool call arguments — a short, human-readable explanation of WHY you are calling this tool (e.g., "Check what files exist in the src folder", "Fix the typo on line 42"). This is displayed to the user and is stripped before execution.
         """;
 
     /// <summary>
