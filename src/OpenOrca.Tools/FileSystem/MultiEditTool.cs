@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -112,7 +113,7 @@ public sealed class MultiEditTool : IOrcaTool
         {
             foreach (var (path, content) in finalContents)
             {
-                await File.WriteAllTextAsync(path, content, ct);
+                await FileRetryHelper.RetryOnIOExceptionAsync(() => File.WriteAllTextAsync(path, content, ct), ct);
                 writtenFiles.Add(path);
             }
         }
@@ -127,7 +128,7 @@ public sealed class MultiEditTool : IOrcaTool
                     catch { /* best effort rollback */ }
                 }
             }
-            return ToolResult.Error($"Failed to write {writtenFiles.Count + 1} file(s), rolled back all changes: {ex.Message}");
+            return ToolResult.Error($"Failed to write {writtenFiles.Count} file(s), rolled back all changes: {ex.Message}");
         }
 
         // Build summary

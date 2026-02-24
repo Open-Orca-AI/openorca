@@ -24,7 +24,7 @@ Create `src/OpenOrca.Tools/Utility/WordCountTool.cs`:
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
 
-namespace OpenOrca.Tools.Utility;
+namespace OpenOrca.Tools.UtilityTools;
 
 [OrcaTool("word_count")]
 public sealed class WordCountTool : IOrcaTool
@@ -108,9 +108,9 @@ Create `tests/OpenOrca.Tools.Tests/Utility/WordCountToolTests.cs`:
 
 ```csharp
 using System.Text.Json;
-using OpenOrca.Tools.Utility;
+using OpenOrca.Tools.UtilityTools;
 
-namespace OpenOrca.Tools.Tests.Utility;
+namespace OpenOrca.Tools.Tests.UtilityTools;
 
 public sealed class WordCountToolTests
 {

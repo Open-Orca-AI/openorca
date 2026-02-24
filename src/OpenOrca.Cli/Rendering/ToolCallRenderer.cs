@@ -145,7 +145,7 @@ public sealed class ToolCallRenderer
                 pattern = TryGetString(root, "pattern");
                 query = TryGetString(root, "query");
             }
-            catch { }
+            catch { /* JSON parse failed — show generic description */ }
         }
 
         return toolName switch

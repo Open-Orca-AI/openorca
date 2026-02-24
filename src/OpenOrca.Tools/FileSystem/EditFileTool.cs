@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -57,7 +58,7 @@ public sealed class EditFileTool : IOrcaTool
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
 
-                await File.WriteAllTextAsync(path, newString, ct);
+                await FileRetryHelper.RetryOnIOExceptionAsync(() => File.WriteAllTextAsync(path, newString, ct), ct);
                 return ToolResult.Success($"Created new file: {path} ({newString.Length} chars)");
             }
             return ToolResult.Error($"File not found: {path}. Use read_file to verify the path, or set create_if_missing=true to create it.");
@@ -82,7 +83,7 @@ public sealed class EditFileTool : IOrcaTool
                 ? content.Replace(oldString, newString)
                 : ReplaceFirst(content, oldString, newString);
 
-            await File.WriteAllTextAsync(path, newContent, ct);
+            await FileRetryHelper.RetryOnIOExceptionAsync(() => File.WriteAllTextAsync(path, newContent, ct), ct);
 
             var changeCount = replaceAll
                 ? CountOccurrences(content, oldString)

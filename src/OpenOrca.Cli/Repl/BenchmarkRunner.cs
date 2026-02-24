@@ -280,7 +280,7 @@ internal sealed class BenchmarkRunner
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
-            try { proc.Kill(entireProcessTree: true); } catch { }
+            try { proc.Kill(entireProcessTree: true); } catch { /* best effort process kill */ }
             sw.Stop();
             return (-1, sw.ElapsedMilliseconds, $"Timed out after {PythonTimeoutSeconds}s");
         }

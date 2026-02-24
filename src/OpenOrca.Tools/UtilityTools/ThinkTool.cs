@@ -1,7 +1,7 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
 
-namespace OpenOrca.Tools.Utility;
+namespace OpenOrca.Tools.UtilityTools;
 
 public sealed class ThinkTool : IOrcaTool
 {

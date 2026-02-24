@@ -22,6 +22,12 @@ internal sealed class MarkdownStreamRenderer
     /// <summary>Whether markdown streaming is actively rendering.</summary>
     public bool Active => _active;
 
+    /// <summary>The console line where rendering started.</summary>
+    public int StartLine => _startLine;
+
+    /// <summary>Returns the accumulated buffer text.</summary>
+    public string GetBuffer() => _buffer.ToString();
+
     /// <summary>
     /// Begin markdown streaming. Captures the current cursor position as the
     /// render origin. Call when the first visible response token arrives.

@@ -1,6 +1,6 @@
-using System.Text.Json;
 using OpenOrca.Tools.FileSystem;
 using Xunit;
+using static OpenOrca.Tools.Tests.TestHelpers;
 
 namespace OpenOrca.Tools.Tests;
 
@@ -19,12 +19,6 @@ public class DeleteMoveToolTests : IDisposable
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, true);
     }
-
-    private static JsonElement MakeArgs(string json) =>
-        JsonDocument.Parse(json).RootElement;
-
-    private string EscapePath(string path) =>
-        path.Replace("\\", "\\\\");
 
     // ── DeleteFileTool ──
 

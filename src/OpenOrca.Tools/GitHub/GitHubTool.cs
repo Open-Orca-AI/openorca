@@ -218,7 +218,7 @@ internal static class GhHelper
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.Kill(entireProcessTree: true); } catch { /* best effort process kill */ }
                 return ToolResult.Error("GitHub CLI command timed out after 30 seconds.");
             }
 

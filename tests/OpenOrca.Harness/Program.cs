@@ -4,8 +4,8 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenAI;
-using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Client;
+using OpenOrca.Core.Configuration;
 using OpenOrca.Tools.Registry;
 
 // ── OpenOrca Diagnostic Harness ──

@@ -1,24 +1,25 @@
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.AI;
+using OpenOrca.Cli.CustomCommands;
 using OpenOrca.Cli.Logging;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Cli.Repl;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Client;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Hooks;
 using OpenOrca.Core.Orchestration;
 using OpenOrca.Core.Permissions;
 using OpenOrca.Core.Session;
-using OpenOrca.Cli.CustomCommands;
-using OpenOrca.Core.Hooks;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Agent;
 using OpenOrca.Tools.Interactive;
 using OpenOrca.Tools.Registry;
 using OpenOrca.Tools.Shell;
+using OpenOrca.Tools.Utilities;
 using Spectre.Console;
 
 // UTF-8 output encoding — prevents U+2022 (•) from encoding as 0x07 (BEL) in CP437
@@ -245,6 +246,19 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
         argsElement = JsonDocument.Parse("{}").RootElement;
     }
 
+    // Resolve parameter aliases (e.g., file_path → path) before validation
+    var schema = tool.ParameterSchema;
+    if (schema.TryGetProperty("properties", out _))
+    {
+        var resolved = ParameterAliasResolver.ResolveAliases(argsJson, schema, programLogger);
+        if (resolved != argsJson)
+        {
+            programLogger.LogInformation("Resolved parameter aliases for {Tool}: {From} → {To}", toolName, argsJson, resolved);
+            argsJson = resolved;
+            argsElement = JsonDocument.Parse(argsJson).RootElement;
+        }
+    }
+
     // Snapshot file before modification (checkpoint)
     if (toolName is "edit_file" or "write_file" or "delete_file" or "copy_file" or "move_file" or "multi_edit")
     {
@@ -277,7 +291,6 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
     }
 
     // Validate required arguments before execution
-    var schema = tool.ParameterSchema;
     if (schema.TryGetProperty("required", out var requiredArr) && requiredArr.ValueKind == JsonValueKind.Array)
     {
         var missing = new List<string>();

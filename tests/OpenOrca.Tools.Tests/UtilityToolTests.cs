@@ -1,7 +1,7 @@
-using System.Text.Json;
-using OpenOrca.Tools.Utility;
 using OpenOrca.Tools.Utilities;
+using OpenOrca.Tools.UtilityTools;
 using Xunit;
+using static OpenOrca.Tools.Tests.TestHelpers;
 
 namespace OpenOrca.Tools.Tests;
 
@@ -16,9 +16,6 @@ public class UtilityToolTests : IDisposable
     {
         TaskStore.Reset();
     }
-
-    private static JsonElement MakeArgs(string json) =>
-        JsonDocument.Parse(json).RootElement;
 
     // ── ThinkTool ──
 

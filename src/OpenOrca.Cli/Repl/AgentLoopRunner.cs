@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
@@ -77,6 +78,9 @@ internal sealed class AgentLoopRunner
         var nudgeAttempts = 0;
         var toolsExecuted = false;
         var summaryRequested = false;
+        var summaryBuffer = new StringBuilder();
+        const int maxSummaryContinuations = 3;
+        var summaryContinuations = 0;
         _toolCallExecutor.ClearRecentErrors();
 
         // Initialize thinking visibility from config on first run
@@ -116,638 +120,675 @@ internal sealed class AgentLoopRunner
 
         try
         {
-        for (var iteration = 0; iteration < MaxIterations; iteration++)
-        {
-            _logger.LogDebug("=== Agent loop iteration {Iteration}/{Max} ===", iteration + 1, MaxIterations);
-
-            var messages = conversation.GetMessagesForApi();
-            _logger.LogDebug("Conversation has {Count} messages, sending to LLM", messages.Count);
-
-            // Log message roles for debugging
-            foreach (var m in messages)
+            for (var iteration = 0; iteration < MaxIterations; iteration++)
             {
-                var contentTypes = string.Join(", ",
-                    m.Contents.Select(c => c.GetType().Name));
-                _logger.LogDebug("  [{Role}] contents: {Types} ({Len} chars)",
-                    m.Role.Value, contentTypes,
-                    string.Join("", m.Contents.OfType<TextContent>().Select(t => t.Text)).Length);
-            }
+                _logger.LogDebug("=== Agent loop iteration {Iteration}/{Max} ===", iteration + 1, MaxIterations);
 
-            _logger.LogDebug("Native tool calling: {Enabled}, tool count: {Count}",
-                useNativeTools, _toolCallExecutor.Tools?.Count ?? 0);
+                var messages = conversation.GetMessagesForApi();
+                _logger.LogDebug("Conversation has {Count} messages, sending to LLM", messages.Count);
 
-            var options = new ChatOptions
-            {
-                Temperature = _config.LmStudio.Temperature,
-                MaxOutputTokens = _config.LmStudio.MaxTokens,
-                Tools = useNativeTools ? _toolCallExecutor.GetToolsForMode() : []
-            };
-
-            options.ModelId ??= _config.LmStudio.Model;
-
-            _streamingRenderer.Clear();
-
-            // Capture the real stdout so the ThinkingIndicator can write to it
-            var realStdout = Console.Out;
-            _toolCallExecutor.RealStdout = realStdout;
-
-            using var thinking = new ThinkingIndicator(realStdout);
-            thinking.BudgetTokens = _config.Thinking.BudgetTokens;
-            var thinkFilter = new ThinkTagFilter();
-            var toolCallFilter = new ToolCallTagFilter();
-            var firstToken = true;
-            var firstResponseToken = true;
-            var thinkingVisible = _state.ShowThinking;
-            var consoleRedirected = false;
-            var textParts = new List<string>();
-            var thinkingTokenCount = 0;
-            var budgetExceeded = false;
-            var budgetTokens = _config.Thinking.BudgetTokens;
-            var mdStream = new MarkdownStreamRenderer();
-            var useMarkdownStream = !Console.IsOutputRedirected && !_streamingRenderer.Suppressed;
-
-            var realStderr = Console.Error;
-            void RedirectConsole()
-            {
-                if (!consoleRedirected)
+                // Log message roles for debugging
+                foreach (var m in messages)
                 {
-                    Console.SetOut(TextWriter.Null);
-                    Console.SetError(TextWriter.Null);
-                    consoleRedirected = true;
+                    var contentTypes = string.Join(", ",
+                        m.Contents.Select(c => c.GetType().Name));
+                    _logger.LogDebug("  [{Role}] contents: {Types} ({Len} chars)",
+                        m.Role.Value, contentTypes,
+                        string.Join("", m.Contents.OfType<TextContent>().Select(t => t.Text)).Length);
                 }
-            }
-            void RestoreConsole()
-            {
-                if (consoleRedirected)
-                {
-                    Console.SetOut(realStdout);
-                    Console.SetError(realStderr);
-                    consoleRedirected = false;
-                }
-            }
 
-            void CheckThinkingToggle()
-            {
-                while (!Console.IsInputRedirected && Console.KeyAvailable)
+                _logger.LogDebug("Native tool calling: {Enabled}, tool count: {Count}",
+                    useNativeTools, _toolCallExecutor.Tools?.Count ?? 0);
+
+                var options = new ChatOptions
                 {
-                    var key = Console.ReadKey(intercept: true);
-                    if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
+                    Temperature = _config.LmStudio.Temperature,
+                    MaxOutputTokens = _config.LmStudio.MaxTokens,
+                    Tools = useNativeTools ? _toolCallExecutor.GetToolsForMode() : []
+                };
+
+                options.ModelId ??= _config.LmStudio.Model;
+
+                _streamingRenderer.Clear();
+
+                // Capture the real stdout so the ThinkingIndicator can write to it
+                var realStdout = Console.Out;
+                _toolCallExecutor.RealStdout = realStdout;
+
+                using var thinking = new ThinkingIndicator(realStdout);
+                thinking.BudgetTokens = _config.Thinking.BudgetTokens;
+                var thinkFilter = new ThinkTagFilter();
+                var toolCallFilter = new ToolCallTagFilter();
+                var firstToken = true;
+                var firstResponseToken = true;
+                var thinkingVisible = _state.ShowThinking;
+                var consoleRedirected = false;
+                var textParts = new List<string>();
+                var thinkingTokenCount = 0;
+                var budgetExceeded = false;
+                var budgetTokens = _config.Thinking.BudgetTokens;
+                var mdStream = new MarkdownStreamRenderer();
+                var useMarkdownStream = !Console.IsOutputRedirected && !_streamingRenderer.Suppressed;
+
+                var realStderr = Console.Error;
+                void RedirectConsole()
+                {
+                    if (!consoleRedirected)
                     {
-                        _state.ShowThinking = !_state.ShowThinking;
-                        thinkingVisible = _state.ShowThinking;
-                        if (!firstToken)
-                        {
-                            if (thinkingVisible)
-                            {
-                                mdStream.Clear(); // clear markdown output if active
-                                thinking.Stop();
-                                RestoreConsole();
-                                Console.Write("\x1b[36m");
-                                // If we're in the thinking phase, flush accumulated thinking text
-                                if (!thinkFilter.InResponsePhase && thinkFilter.AccumulatedThinking.Length > 0)
-                                {
-                                    Console.Write(thinkFilter.AccumulatedThinking);
-                                }
-                                Console.Write(string.Join("", textParts));
-                            }
-                            else if (!thinkFilter.InResponsePhase)
-                            {
-                                // Toggled to hidden during thinking — redirect
-                                _streamingRenderer.Finish();
-                                Console.Write("\x1b[0m\r\x1b[K");
-                                RedirectConsole();
-                            }
-                            // If toggled to hidden during response phase, ignore — response stays visible
-                        }
-                        else
-                        {
-                            if (thinkingVisible) RestoreConsole();
-                            else RedirectConsole();
-                        }
+                        Console.SetOut(TextWriter.Null);
+                        Console.SetError(TextWriter.Null);
+                        consoleRedirected = true;
                     }
                 }
-            }
-
-            if (!thinkingVisible)
-                RedirectConsole();
-
-            try
-            {
-                _logger.LogDebug("Starting streaming request to LLM...");
-
-                textParts.Clear();
-                var allContents = new List<AIContent>();
-                var tokenCount = 0;
-
-                var streamingTimeout = TimeSpan.FromSeconds(
-                    _config.LmStudio.StreamingTimeoutSeconds > 0
-                        ? _config.LmStudio.StreamingTimeoutSeconds
-                        : CliConstants.StreamingIdleTimeoutSeconds);
-
-                var updateCount = 0;
-                using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
-                idleCts.CancelAfter(streamingTimeout);
-
-                try
+                void RestoreConsole()
                 {
-                await foreach (var update in _chatClient.GetStreamingResponseAsync(
-                    messages, options, idleCts.Token))
-                {
-                    // Reset idle timer on each update
-                    idleCts.CancelAfter(streamingTimeout);
-                    updateCount++;
-
-                    CheckThinkingToggle();
-
-                    foreach (var content in update.Contents)
+                    if (consoleRedirected)
                     {
-                        if (firstToken)
-                        {
-                            _logger.LogDebug("First token received from LLM");
-                            if (thinkingVisible)
-                            {
-                                thinking.Stop();
-                                RestoreConsole();
-                                Console.Write("\x1b[36m");
-                            }
-                            firstToken = false;
-                        }
+                        Console.SetOut(realStdout);
+                        Console.SetError(realStderr);
+                        consoleRedirected = false;
+                    }
+                }
 
-                        if (content is TextContent textContent)
+                void CheckThinkingToggle()
+                {
+                    while (!Console.IsInputRedirected && Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(intercept: true);
+                        if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
                         {
-                            tokenCount++;
-                            textParts.Add(textContent.Text);
-
-                            if (thinkingVisible)
+                            _state.ShowThinking = !_state.ShowThinking;
+                            thinkingVisible = _state.ShowThinking;
+                            if (!firstToken)
                             {
-                                _streamingRenderer.AppendToken(toolCallFilter.Filter(textContent.Text));
+                                if (thinkingVisible)
+                                {
+                                    mdStream.Clear(); // clear markdown output if active
+                                    thinking.Stop();
+                                    RestoreConsole();
+                                    Console.Write("\x1b[36m");
+                                    // If we're in the thinking phase, flush accumulated thinking text
+                                    if (!thinkFilter.InResponsePhase && thinkFilter.AccumulatedThinking.Length > 0)
+                                    {
+                                        Console.Write(thinkFilter.AccumulatedThinking);
+                                    }
+                                    Console.Write(string.Join("", textParts));
+                                }
+                                else if (!thinkFilter.InResponsePhase)
+                                {
+                                    // Toggled to hidden during thinking — redirect
+                                    _streamingRenderer.Finish();
+                                    Console.Write("\x1b[0m\r\x1b[K");
+                                    RedirectConsole();
+                                }
+                                // If toggled to hidden during response phase, ignore — response stays visible
                             }
                             else
                             {
-                                // Use ThinkTagFilter to separate thinking from response
-                                var (thinkText, responseText) = thinkFilter.Process(textContent.Text);
-
-                                if (thinkText.Length > 0)
-                                {
-                                    thinkingTokenCount++;
-                                    thinking.UpdateTokenCount(thinkingTokenCount);
-                                    if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
-                                        budgetExceeded = true;
-                                }
-
-                                if (responseText.Length > 0)
-                                {
-                                    var filtered = toolCallFilter.Filter(responseText);
-                                    if (filtered.Length > 0)
-                                    {
-                                        if (firstResponseToken)
-                                        {
-                                            // First response token — stop thinking indicator, show response
-                                            thinking.Stop();
-                                            RestoreConsole();
-                                            if (useMarkdownStream)
-                                                mdStream.Start();
-                                            else
-                                                Console.Write("\x1b[36m");
-                                            firstResponseToken = false;
-                                        }
-                                        if (useMarkdownStream)
-                                            mdStream.AppendToken(filtered);
-                                        else
-                                            _streamingRenderer.AppendToken(filtered);
-                                    }
-                                }
+                                if (thinkingVisible) RestoreConsole();
+                                else RedirectConsole();
                             }
                         }
-                        else if (content is FunctionCallContent fcc)
-                        {
-                            _logger.LogDebug("Native FunctionCallContent received: {Name} (id: {Id})",
-                                fcc.Name, fcc.CallId);
-                        }
-                        else
-                        {
-                            _logger.LogDebug("Other content type received: {Type}", content.GetType().Name);
-                        }
-
-                        allContents.Add(content);
                     }
                 }
-                }
-                catch (OperationCanceledException) when (idleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
+
+                if (!thinkingVisible)
+                    RedirectConsole();
+
+                try
                 {
-                    thinking.Stop();
-                    RestoreConsole();
-                    _logger.LogWarning("Streaming idle timeout after {Seconds}s — no tokens received", streamingTimeout.TotalSeconds);
-                    AnsiConsole.MarkupLine($"\n[red]Streaming timeout: no tokens received for {streamingTimeout.TotalSeconds:0}s[/]");
-                    ShowLogHint();
-                    break;
-                }
+                    _logger.LogDebug("Starting streaming request to LLM...");
 
-                // Always restore console before any post-stream output
-                RestoreConsole();
+                    textParts.Clear();
+                    var allContents = new List<AIContent>();
+                    var tokenCount = 0;
 
-                if (firstToken && updateCount > 0 && useNativeTools)
-                {
-                    // Streaming with native tools returned updates but no content items.
-                    // Retry WITHOUT native tools so the model uses text-based tool calling.
-                    _logger.LogDebug("Stream had {UpdateCount} updates but 0 contents with native tools — retrying streaming without native tools", updateCount);
+                    var streamingTimeout = TimeSpan.FromSeconds(
+                        _config.LmStudio.StreamingTimeoutSeconds > 0
+                            ? _config.LmStudio.StreamingTimeoutSeconds
+                            : CliConstants.StreamingIdleTimeoutSeconds);
 
-                    var retryOptions = new ChatOptions
-                    {
-                        Temperature = options.Temperature,
-                        MaxOutputTokens = options.MaxOutputTokens,
-                        ModelId = options.ModelId,
-                        Tools = []
-                    };
-
-                    firstToken = true;
-                    updateCount = 0;
-
-                    using var retryIdleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
-                    retryIdleCts.CancelAfter(streamingTimeout);
+                    var updateCount = 0;
+                    ChatFinishReason? lastFinishReason = null;
+                    using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
+                    idleCts.CancelAfter(streamingTimeout);
 
                     try
                     {
-                    await foreach (var update in _chatClient.GetStreamingResponseAsync(
-                        messages, retryOptions, retryIdleCts.Token))
-                    {
-                        retryIdleCts.CancelAfter(streamingTimeout);
-                        updateCount++;
-
-                        CheckThinkingToggle();
-
-                        foreach (var content in update.Contents)
+                        await foreach (var update in _chatClient.GetStreamingResponseAsync(
+                            messages, options, idleCts.Token))
                         {
-                            if (firstToken)
+                            // Reset idle timer on each update
+                            idleCts.CancelAfter(streamingTimeout);
+                            updateCount++;
+                            lastFinishReason = update.FinishReason ?? lastFinishReason;
+
+                            CheckThinkingToggle();
+
+                            foreach (var content in update.Contents)
                             {
-                                _logger.LogDebug("First token received from retry stream");
-                                if (thinkingVisible) { thinking.Stop(); RestoreConsole(); Console.Write("\x1b[36m"); }
-                                firstToken = false;
-                            }
-
-                            if (content is TextContent tc)
-                            {
-                                tokenCount++;
-                                textParts.Add(tc.Text);
-
-                                if (thinkingVisible)
+                                if (firstToken)
                                 {
-                                    _streamingRenderer.AppendToken(toolCallFilter.Filter(tc.Text));
-                                }
-                                else
-                                {
-                                    var (thinkText, responseText) = thinkFilter.Process(tc.Text);
-
-                                    if (thinkText.Length > 0)
+                                    _logger.LogDebug("First token received from LLM");
+                                    if (thinkingVisible)
                                     {
-                                        thinkingTokenCount++;
-                                        thinking.UpdateTokenCount(thinkingTokenCount);
-                                        if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
-                                            budgetExceeded = true;
+                                        thinking.Stop();
+                                        RestoreConsole();
+                                        Console.Write("\x1b[36m");
                                     }
+                                    firstToken = false;
+                                }
 
-                                    if (responseText.Length > 0)
+                                if (content is TextContent textContent)
+                                {
+                                    tokenCount++;
+                                    textParts.Add(textContent.Text);
+
+                                    if (thinkingVisible)
                                     {
-                                        var filtered = toolCallFilter.Filter(responseText);
-                                        if (filtered.Length > 0)
+                                        _streamingRenderer.AppendToken(toolCallFilter.Filter(textContent.Text));
+                                    }
+                                    else
+                                    {
+                                        // Use ThinkTagFilter to separate thinking from response
+                                        var (thinkText, responseText) = thinkFilter.Process(textContent.Text);
+
+                                        if (thinkText.Length > 0)
                                         {
-                                            if (firstResponseToken)
+                                            thinkingTokenCount++;
+                                            thinking.UpdateTokenCount(thinkingTokenCount);
+                                            if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
+                                                budgetExceeded = true;
+                                        }
+
+                                        if (responseText.Length > 0)
+                                        {
+                                            var filtered = toolCallFilter.Filter(responseText);
+                                            if (filtered.Length > 0)
                                             {
-                                                thinking.Stop();
-                                                RestoreConsole();
-                                                if (useMarkdownStream)
-                                                    mdStream.Start();
+                                                if (toolsExecuted)
+                                                {
+                                                    // Buffer silently once tools have run — rendered once after loop
+                                                    summaryBuffer.Append(filtered);
+                                                }
                                                 else
-                                                    Console.Write("\x1b[36m");
-                                                firstResponseToken = false;
+                                                {
+                                                    if (firstResponseToken)
+                                                    {
+                                                        // First response token — stop thinking indicator, show response
+                                                        thinking.Stop();
+                                                        RestoreConsole();
+                                                        if (useMarkdownStream)
+                                                            mdStream.Start();
+                                                        else
+                                                            Console.Write("\x1b[36m");
+                                                        firstResponseToken = false;
+                                                    }
+                                                    if (useMarkdownStream)
+                                                        mdStream.AppendToken(filtered);
+                                                    else
+                                                        _streamingRenderer.AppendToken(filtered);
+                                                }
                                             }
-                                            if (useMarkdownStream)
-                                                mdStream.AppendToken(filtered);
-                                            else
-                                                _streamingRenderer.AppendToken(filtered);
                                         }
                                     }
                                 }
+                                else if (content is FunctionCallContent fcc)
+                                {
+                                    _logger.LogDebug("Native FunctionCallContent received: {Name} (id: {Id})",
+                                        fcc.Name, fcc.CallId);
+                                }
+                                else
+                                {
+                                    _logger.LogDebug("Other content type received: {Type}", content.GetType().Name);
+                                }
+
+                                allContents.Add(content);
                             }
-                            allContents.Add(content);
                         }
                     }
-                    }
-                    catch (OperationCanceledException) when (retryIdleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
+                    catch (OperationCanceledException) when (idleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
                     {
                         thinking.Stop();
                         RestoreConsole();
-                        _logger.LogWarning("Retry streaming idle timeout after {Seconds}s", streamingTimeout.TotalSeconds);
+                        _logger.LogWarning("Streaming idle timeout after {Seconds}s — no tokens received", streamingTimeout.TotalSeconds);
                         AnsiConsole.MarkupLine($"\n[red]Streaming timeout: no tokens received for {streamingTimeout.TotalSeconds:0}s[/]");
                         ShowLogHint();
                         break;
                     }
 
+                    // Always restore console before any post-stream output
                     RestoreConsole();
-                    _logger.LogDebug("Retry stream complete: {UpdateCount} updates, {ContentCount} contents", updateCount, allContents.Count);
 
-                    useNativeTools = false;
-                    options.Tools = [];
-                }
+                    if (firstToken && updateCount > 0 && useNativeTools)
+                    {
+                        // Streaming with native tools returned updates but no content items.
+                        // Retry WITHOUT native tools so the model uses text-based tool calling.
+                        _logger.LogDebug("Stream had {UpdateCount} updates but 0 contents with native tools — retrying streaming without native tools", updateCount);
 
-                if (firstToken)
-                {
-                    _logger.LogWarning("No tokens received from LLM — empty response");
-                    thinking.Stop();
+                        var retryOptions = new ChatOptions
+                        {
+                            Temperature = options.Temperature,
+                            MaxOutputTokens = options.MaxOutputTokens,
+                            ModelId = options.ModelId,
+                            Tools = []
+                        };
 
-                    var serverError = await ProbeForServerErrorAsync(messages, options, genToken);
-                    if (serverError is not null)
-                        AnsiConsole.MarkupLine($"[red]LLM server error: {Markup.Escape(serverError)}[/]");
-                    else
-                        AnsiConsole.MarkupLine("[yellow]LLM returned an empty response.[/]");
+                        firstToken = true;
+                        updateCount = 0;
 
-                    ShowLogHint();
-                    break;
-                }
+                        using var retryIdleCts = CancellationTokenSource.CreateLinkedTokenSource(genToken);
+                        retryIdleCts.CancelAfter(streamingTimeout);
 
-                var fullText = string.Join("", textParts);
-                _state.LastAssistantResponse = fullText;
-                _state.TotalOutputTokens += tokenCount;
-                _logger.LogDebug("Streaming complete: {TokenCount} tokens, {CharCount} chars, {ContentCount} content items",
-                    tokenCount, fullText.Length, allContents.Count);
+                        try
+                        {
+                            await foreach (var update in _chatClient.GetStreamingResponseAsync(
+                                messages, retryOptions, retryIdleCts.Token))
+                            {
+                                retryIdleCts.CancelAfter(streamingTimeout);
+                                updateCount++;
+                                lastFinishReason = update.FinishReason ?? lastFinishReason;
 
-                if (thinkingVisible)
-                {
-                    _streamingRenderer.Finish();
-                    Console.Write("\x1b[0m");
-                }
-                else if (!firstResponseToken)
-                {
-                    // Response tokens were streamed visibly — finish the output
-                    if (mdStream.Active)
-                        mdStream.Finish();
-                    else
+                                CheckThinkingToggle();
+
+                                foreach (var content in update.Contents)
+                                {
+                                    if (firstToken)
+                                    {
+                                        _logger.LogDebug("First token received from retry stream");
+                                        if (thinkingVisible) { thinking.Stop(); RestoreConsole(); Console.Write("\x1b[36m"); }
+                                        firstToken = false;
+                                    }
+
+                                    if (content is TextContent tc)
+                                    {
+                                        tokenCount++;
+                                        textParts.Add(tc.Text);
+
+                                        if (thinkingVisible)
+                                        {
+                                            _streamingRenderer.AppendToken(toolCallFilter.Filter(tc.Text));
+                                        }
+                                        else
+                                        {
+                                            var (thinkText, responseText) = thinkFilter.Process(tc.Text);
+
+                                            if (thinkText.Length > 0)
+                                            {
+                                                thinkingTokenCount++;
+                                                thinking.UpdateTokenCount(thinkingTokenCount);
+                                                if (budgetTokens > 0 && thinkingTokenCount > budgetTokens && !thinkFilter.InResponsePhase)
+                                                    budgetExceeded = true;
+                                            }
+
+                                            if (responseText.Length > 0)
+                                            {
+                                                var filtered = toolCallFilter.Filter(responseText);
+                                                if (filtered.Length > 0)
+                                                {
+                                                    if (toolsExecuted)
+                                                    {
+                                                        summaryBuffer.Append(filtered);
+                                                    }
+                                                    else
+                                                    {
+                                                        if (firstResponseToken)
+                                                        {
+                                                            thinking.Stop();
+                                                            RestoreConsole();
+                                                            if (useMarkdownStream)
+                                                                mdStream.Start();
+                                                            else
+                                                                Console.Write("\x1b[36m");
+                                                            firstResponseToken = false;
+                                                        }
+                                                        if (useMarkdownStream)
+                                                            mdStream.AppendToken(filtered);
+                                                        else
+                                                            _streamingRenderer.AppendToken(filtered);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    allContents.Add(content);
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException) when (retryIdleCts.IsCancellationRequested && !genToken.IsCancellationRequested)
+                        {
+                            thinking.Stop();
+                            RestoreConsole();
+                            _logger.LogWarning("Retry streaming idle timeout after {Seconds}s", streamingTimeout.TotalSeconds);
+                            AnsiConsole.MarkupLine($"\n[red]Streaming timeout: no tokens received for {streamingTimeout.TotalSeconds:0}s[/]");
+                            ShowLogHint();
+                            break;
+                        }
+
+                        RestoreConsole();
+                        _logger.LogDebug("Retry stream complete: {UpdateCount} updates, {ContentCount} contents", updateCount, allContents.Count);
+
+                        useNativeTools = false;
+                        options.Tools = [];
+                    }
+
+                    if (firstToken)
+                    {
+                        _logger.LogWarning("No tokens received from LLM — empty response");
+                        thinking.Stop();
+
+                        var serverError = await ProbeForServerErrorAsync(messages, options, genToken);
+                        if (serverError is not null)
+                            AnsiConsole.MarkupLine($"[red]LLM server error: {Markup.Escape(serverError)}[/]");
+                        else
+                            AnsiConsole.MarkupLine("[yellow]LLM returned an empty response.[/]");
+
+                        ShowLogHint();
+                        break;
+                    }
+
+                    var fullText = string.Join("", textParts);
+                    _state.LastAssistantResponse = fullText;
+                    _state.TotalOutputTokens += tokenCount;
+                    _logger.LogDebug("Streaming complete: {TokenCount} tokens, {CharCount} chars, {ContentCount} content items",
+                        tokenCount, fullText.Length, allContents.Count);
+
+                    if (thinkingVisible)
                     {
                         _streamingRenderer.Finish();
                         Console.Write("\x1b[0m");
                     }
-                }
-                else
-                {
-                    // No response tokens were shown (pure thinking or empty)
-                    thinking.Stop();
-                    if (fullText.Length > 0)
+                    else if (!firstResponseToken)
                     {
-                        var preview = fullText.ReplaceLineEndings(" ");
-                        if (preview.Length > 80)
-                            preview = preview[..77] + "...";
-                        Console.Write("\x1b[2m\x1b[36m");
-                        Console.Write($"  [{tokenCount} tokens] {preview}");
-                        Console.WriteLine("\x1b[0m");
-                    }
-                }
-
-                // Build a ChatMessage from accumulated content
-                var assistantMessage = new ChatMessage(ChatRole.Assistant, "");
-                if (!string.IsNullOrEmpty(fullText))
-                    assistantMessage.Contents.Add(new TextContent(fullText));
-
-                // Collect native function calls
-                var nativeFunctionCalls = allContents.OfType<FunctionCallContent>().ToList();
-                foreach (var fc in nativeFunctionCalls)
-                    assistantMessage.Contents.Add(fc);
-
-                _logger.LogDebug("Native function calls: {Count}", nativeFunctionCalls.Count);
-
-                // Fallback: if no native function calls, try parsing tool calls from text
-                List<FunctionCallContent>? parsedFunctionCalls = null;
-                if (nativeFunctionCalls.Count == 0 && !string.IsNullOrEmpty(fullText))
-                {
-                    var hasThink = fullText.Contains("<think>", StringComparison.OrdinalIgnoreCase);
-                    var hasThinkClose = fullText.Contains("</think>", StringComparison.OrdinalIgnoreCase);
-                    if (hasThink)
-                    {
-                        _logger.LogDebug("Model used <think> tags (closed: {Closed})", hasThinkClose);
-                        if (hasThinkClose)
+                        // Response tokens were streamed visibly — finish the output
+                        if (mdStream.Active)
+                            mdStream.Finish();
+                        else
                         {
-                            var afterThink = Regex.Replace(fullText, @"<think>.*?</think>", "",
-                                RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
-                            _logger.LogDebug("Content after </think> ({Len} chars): {Preview}",
-                                afterThink.Length,
-                                afterThink.Length > 500 ? afterThink[..500] : afterThink);
+                            _streamingRenderer.Finish();
+                            Console.Write("\x1b[0m");
+                        }
+                    }
+                    else if (toolsExecuted)
+                    {
+                        // Post-tool response buffered silently — just stop the thinking indicator
+                        thinking.Stop();
+                        RestoreConsole();
+                    }
+                    else
+                    {
+                        // No response tokens were shown (pure thinking or empty)
+                        thinking.Stop();
+                        if (fullText.Length > 0)
+                        {
+                            var preview = fullText.ReplaceLineEndings(" ");
+                            if (preview.Length > 80)
+                                preview = preview[..77] + "...";
+                            Console.Write("\x1b[2m\x1b[36m");
+                            Console.Write($"  [{tokenCount} tokens] {preview}");
+                            Console.WriteLine("\x1b[0m");
+                        }
+                    }
+
+                    // Build a ChatMessage from accumulated content
+                    var assistantMessage = new ChatMessage(ChatRole.Assistant, "");
+                    if (!string.IsNullOrEmpty(fullText))
+                        assistantMessage.Contents.Add(new TextContent(fullText));
+
+                    // Collect native function calls
+                    var nativeFunctionCalls = allContents.OfType<FunctionCallContent>().ToList();
+                    foreach (var fc in nativeFunctionCalls)
+                        assistantMessage.Contents.Add(fc);
+
+                    _logger.LogDebug("Native function calls: {Count}", nativeFunctionCalls.Count);
+
+                    // Fallback: if no native function calls, try parsing tool calls from text
+                    List<FunctionCallContent>? parsedFunctionCalls = null;
+                    if (nativeFunctionCalls.Count == 0 && !string.IsNullOrEmpty(fullText))
+                    {
+                        var hasThink = fullText.Contains("<think>", StringComparison.OrdinalIgnoreCase);
+                        var hasThinkClose = fullText.Contains("</think>", StringComparison.OrdinalIgnoreCase);
+                        if (hasThink)
+                        {
+                            _logger.LogDebug("Model used <think> tags (closed: {Closed})", hasThinkClose);
+                            if (hasThinkClose)
+                            {
+                                var afterThink = Regex.Replace(fullText, @"<think>.*?</think>", "",
+                                    RegexOptions.Singleline | RegexOptions.IgnoreCase).Trim();
+                                _logger.LogDebug("Content after </think> ({Len} chars): {Preview}",
+                                    afterThink.Length,
+                                    afterThink.Length > 500 ? afterThink[..500] : afterThink);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Model opened <think> but never closed it — entire response is reasoning");
+                            }
+                        }
+
+                        parsedFunctionCalls = _toolCallParser.ParseToolCallsFromText(fullText);
+                        _logger.LogDebug("Parsed function calls from text: {Count}", parsedFunctionCalls.Count);
+
+                        if (parsedFunctionCalls.Count > 0)
+                        {
+                            foreach (var pc in parsedFunctionCalls)
+                            {
+                                _logger.LogInformation("Text-parsed tool call: {Name} args: {Args}",
+                                    pc.Name,
+                                    pc.Arguments is not null
+                                        ? JsonSerializer.Serialize(pc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
+                                        : "{}");
+                            }
                         }
                         else
                         {
-                            _logger.LogWarning("Model opened <think> but never closed it — entire response is reasoning");
+                            _logger.LogDebug("No tool calls found. Full text ({Len} chars), first 500: {Preview}",
+                                fullText.Length, fullText.Length > 500 ? fullText[..500] : fullText);
+                            if (fullText.Length > 300)
+                            {
+                                _logger.LogDebug("Last 300 chars: {Tail}", fullText[^300..]);
+                            }
                         }
                     }
 
-                    parsedFunctionCalls = _toolCallParser.ParseToolCallsFromText(fullText);
-                    _logger.LogDebug("Parsed function calls from text: {Count}", parsedFunctionCalls.Count);
-
-                    if (parsedFunctionCalls.Count > 0)
+                    if (nativeFunctionCalls.Count > 0)
                     {
-                        foreach (var pc in parsedFunctionCalls)
+                        if (useNativeTools && _toolCallExecutor.HasMissingRequiredArgs(nativeFunctionCalls))
                         {
-                            _logger.LogInformation("Text-parsed tool call: {Name} args: {Args}",
-                                pc.Name,
-                                pc.Arguments is not null
-                                    ? JsonSerializer.Serialize(pc.Arguments, OrcaJsonContext.Default.IDictionaryStringObject)
-                                    : "{}");
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogDebug("No tool calls found. Full text ({Len} chars), first 500: {Preview}",
-                            fullText.Length, fullText.Length > 500 ? fullText[..500] : fullText);
-                        if (fullText.Length > 300)
-                        {
-                            _logger.LogDebug("Last 300 chars: {Tail}", fullText[^300..]);
-                        }
-                    }
-                }
-
-                if (nativeFunctionCalls.Count > 0)
-                {
-                    if (useNativeTools && _toolCallExecutor.HasMissingRequiredArgs(nativeFunctionCalls))
-                    {
-                        _logger.LogWarning(
-                            "Native tool call(s) have empty arguments for tools with required params — " +
-                            "SDK streaming likely lost the args. Auto-downgrading to text-based calling.");
-                        useNativeTools = false;
-                        options.Tools = [];
-                        continue;
-                    }
-
-                    // Inject thinking budget advisory if exceeded
-                    if (budgetExceeded)
-                    {
-                        _logger.LogInformation("Thinking budget exceeded: {ThinkTokens} tokens (budget: {Budget})", thinkingTokenCount, budgetTokens);
-                        conversation.AddMessage(assistantMessage);
-                        conversation.AddUserMessage(
-                            $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
-                        await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Executing {Count} native tool call(s)", nativeFunctionCalls.Count);
-                        conversation.AddMessage(assistantMessage);
-                        await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
-                    }
-                    toolsExecuted = true;
-                }
-                else if (parsedFunctionCalls is { Count: > 0 })
-                {
-                    _logger.LogInformation("Executing {Count} text-parsed tool call(s)", parsedFunctionCalls.Count);
-                    conversation.AddMessage(assistantMessage);
-
-                    if (budgetExceeded)
-                    {
-                        conversation.AddUserMessage(
-                            $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
-                    }
-
-                    await _toolCallExecutor.ExecuteTextToolCallsAsync(parsedFunctionCalls, conversation, genToken);
-                    toolsExecuted = true;
-                }
-                else
-                {
-                    conversation.AddMessage(assistantMessage);
-
-                    var hasOpenToolCall = fullText.Contains("<tool_call>", StringComparison.OrdinalIgnoreCase);
-                    var hasCloseToolCall = fullText.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
-
-                    if (hasOpenToolCall && !hasCloseToolCall && nudgeAttempts < 2)
-                    {
-                        nudgeAttempts++;
-                        _logger.LogInformation("Truncated tool call detected (attempt {Attempt}) — asking model to continue", nudgeAttempts);
-                        AnsiConsole.MarkupLine("[yellow]Tool call was truncated — asking model to continue...[/]");
-
-                        conversation.AddUserMessage(PromptConstants.TruncatedToolCallMessage);
-                    }
-                    else if (nudgeAttempts < 1 && !string.IsNullOrEmpty(fullText) && _toolCallParser.ShouldNudgeForToolCalls(fullText))
-                    {
-                        nudgeAttempts++;
-                        _logger.LogInformation("Nudging model (attempt {Attempt}) — response has code blocks but no tool calls", nudgeAttempts);
-                        AnsiConsole.MarkupLine("[yellow]Nudging model to use tool calls...[/]");
-
-                        conversation.AddUserMessage(PromptConstants.NudgeMessage);
-                    }
-                    else
-                    {
-                        if (toolsExecuted && !summaryRequested)
-                        {
-                            summaryRequested = true;
-                            _logger.LogDebug("Tools were executed — requesting final summary");
-                            conversation.AddUserMessage(PromptConstants.SummaryRequestMessage);
+                            _logger.LogWarning(
+                                "Native tool call(s) have empty arguments for tools with required params — " +
+                                "SDK streaming likely lost the args. Auto-downgrading to text-based calling.");
+                            useNativeTools = false;
                             options.Tools = [];
+                            continue;
+                        }
+
+                        // Inject thinking budget advisory if exceeded
+                        if (budgetExceeded)
+                        {
+                            _logger.LogInformation("Thinking budget exceeded: {ThinkTokens} tokens (budget: {Budget})", thinkingTokenCount, budgetTokens);
+                            conversation.AddMessage(assistantMessage);
+                            conversation.AddUserMessage(
+                                $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
+                            await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
                         }
                         else
                         {
-                            _logger.LogDebug("No tool calls — ending agent loop (nudge attempts: {Nudge})", nudgeAttempts);
-                            break;
+                            _logger.LogInformation("Executing {Count} native tool call(s)", nativeFunctionCalls.Count);
+                            conversation.AddMessage(assistantMessage);
+                            await _toolCallExecutor.ExecuteToolCallsAsync(nativeFunctionCalls, conversation, genToken);
                         }
+                        toolsExecuted = true;
                     }
-                }
-
-                // Safety net: retry loop detection
-                var maxFailure = _toolCallExecutor.GetMaxFailure();
-
-                if (maxFailure.Count >= 4)
-                {
-                    _logger.LogWarning("Force-breaking agent loop — a tool has failed {Count} times identically", maxFailure.Count);
-                    AnsiConsole.MarkupLine($"[yellow]Tool stuck in retry loop ({maxFailure.Count} identical failures) — stopping.[/]");
-                    break;
-                }
-
-                if (maxFailure.Count >= 3)
-                {
-                    _logger.LogWarning("Injecting user message to redirect model after {Count} identical tool failures", maxFailure.Count);
-                    conversation.AddUserMessage(PromptConstants.RetryLoopRedirectMessage);
-                }
-            }
-            catch (HttpRequestException ex)
-            {
-                thinking.Stop();
-                RestoreConsole();
-                mdStream.Finish();
-                _streamingRenderer.Finish();
-                Console.Write("\x1b[0m");
-                _logger.LogError(ex, "HTTP error communicating with LLM server");
-                AnsiConsole.MarkupLine($"\n[red]LLM server error: {Markup.Escape(ex.Message)}[/]");
-                if (ex.InnerException is not null)
-                    AnsiConsole.MarkupLine($"[red]  Inner: {Markup.Escape(ex.InnerException.Message)}[/]");
-                AnsiConsole.MarkupLine($"[grey]  Endpoint: {Markup.Escape(_config.LmStudio.BaseUrl)}[/]");
-                ShowLogHint();
-                break;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                thinking.Stop();
-                RestoreConsole();
-                mdStream.Finish();
-                _streamingRenderer.Finish();
-                Console.Write("\x1b[0m");
-
-                _logger.LogError(ex, "Error in agent loop iteration {Iteration}", iteration + 1);
-                AnsiConsole.MarkupLine($"\n[red]Error: {Markup.Escape(ex.Message)}[/]");
-                AnsiConsole.MarkupLine($"[grey]  Type: {ex.GetType().FullName}[/]");
-                if (ex.InnerException is not null)
-                    AnsiConsole.MarkupLine($"[grey]  Inner: {Markup.Escape(ex.InnerException.Message)}[/]");
-                ShowLogHint();
-
-                // Try non-streaming fallback
-                _logger.LogWarning("Attempting non-streaming fallback...");
-                AnsiConsole.MarkupLine("[yellow]Retrying without streaming...[/]");
-
-                try
-                {
-                    var response = await _chatClient.GetResponseAsync(
-                        conversation.GetMessagesForApi(), options, genToken);
-
-                    _logger.LogDebug("Non-streaming response: {MsgCount} messages", response.Messages.Count);
-
-                    var anyToolCalls = false;
-
-                    foreach (var msg in response.Messages)
+                    else if (parsedFunctionCalls is { Count: > 0 })
                     {
-                        conversation.AddMessage(msg);
+                        _logger.LogInformation("Executing {Count} text-parsed tool call(s)", parsedFunctionCalls.Count);
+                        conversation.AddMessage(assistantMessage);
 
-                        var text = string.Join("", msg.Contents.OfType<TextContent>().Select(t => t.Text));
-                        if (!string.IsNullOrEmpty(text))
+                        if (budgetExceeded)
                         {
-                            _logger.LogDebug("Non-streaming text ({Len} chars): {Preview}",
-                                text.Length, text.Length > 100 ? text[..100] : text);
-                            AnsiConsole.MarkupLine($"[cyan]{Markup.Escape(text)}[/]");
+                            conversation.AddUserMessage(
+                                $"Note: Your thinking exceeded the budget of {budgetTokens} tokens ({thinkingTokenCount} used). Keep reasoning concise for simple tasks.");
                         }
 
-                        var functionCalls = msg.Contents.OfType<FunctionCallContent>().ToList();
-                        _logger.LogDebug("Non-streaming function calls: {Count}", functionCalls.Count);
+                        await _toolCallExecutor.ExecuteTextToolCallsAsync(parsedFunctionCalls, conversation, genToken);
+                        toolsExecuted = true;
+                    }
+                    else
+                    {
+                        conversation.AddMessage(assistantMessage);
 
-                        if (functionCalls.Count == 0 && !string.IsNullOrEmpty(text))
-                            functionCalls = _toolCallParser.ParseToolCallsFromText(text);
+                        var hasOpenToolCall = fullText.Contains("<tool_call>", StringComparison.OrdinalIgnoreCase);
+                        var hasCloseToolCall = fullText.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
 
-                        if (functionCalls.Count > 0)
+                        if (!summaryRequested && hasOpenToolCall && !hasCloseToolCall && nudgeAttempts < 2)
                         {
-                            anyToolCalls = true;
-                            await _toolCallExecutor.ExecuteToolCallsAsync(functionCalls, conversation, genToken);
-                            toolsExecuted = true;
+                            nudgeAttempts++;
+                            _logger.LogInformation("Truncated tool call detected (attempt {Attempt}) — asking model to continue", nudgeAttempts);
+                            AnsiConsole.MarkupLine("[yellow]Tool call was truncated — asking model to continue...[/]");
+
+                            conversation.AddUserMessage(PromptConstants.TruncatedToolCallMessage);
+                        }
+                        else if (!summaryRequested && nudgeAttempts < 1 && !string.IsNullOrEmpty(fullText) && _toolCallParser.ShouldNudgeForToolCalls(fullText))
+                        {
+                            nudgeAttempts++;
+                            _logger.LogInformation("Nudging model (attempt {Attempt}) — response has code blocks but no tool calls", nudgeAttempts);
+                            AnsiConsole.MarkupLine("[yellow]Nudging model to use tool calls...[/]");
+
+                            conversation.AddUserMessage(PromptConstants.NudgeMessage);
+                        }
+                        else
+                        {
+                            if (toolsExecuted && !summaryRequested)
+                            {
+                                summaryRequested = true;
+                                summaryBuffer.Clear(); // discard the model's natural wrap-up text
+                                _logger.LogDebug("Tools were executed — requesting final summary");
+                                conversation.AddUserMessage(PromptConstants.SummaryRequestMessage);
+                                options.Tools = [];
+                            }
+                            else if (summaryRequested
+                                     && lastFinishReason == ChatFinishReason.Length
+                                     && summaryContinuations < maxSummaryContinuations)
+                            {
+                                // Summary was truncated — request continuation (old render will be replaced)
+                                summaryContinuations++;
+                                _logger.LogInformation(
+                                    "Summary truncated (finish_reason=length, attempt {Attempt}/{Max}) — requesting continuation",
+                                    summaryContinuations, maxSummaryContinuations);
+                                conversation.AddUserMessage(
+                                    "Your response was cut off. Continue exactly where you stopped — do NOT repeat anything you already wrote.");
+                            }
+                            else
+                            {
+                                _logger.LogDebug("No tool calls — ending agent loop (nudge attempts: {Nudge})", nudgeAttempts);
+                                break;
+                            }
                         }
                     }
 
-                    if (!anyToolCalls)
+                    // Safety net: retry loop detection
+                    var maxFailure = _toolCallExecutor.GetMaxFailure();
+
+                    if (maxFailure.Count >= 4)
                     {
-                        _logger.LogDebug("Non-streaming: no tool calls, ending loop");
+                        _logger.LogWarning("Force-breaking agent loop — a tool has failed {Count} times identically", maxFailure.Count);
+                        AnsiConsole.MarkupLine($"[yellow]Tool stuck in retry loop ({maxFailure.Count} identical failures) — stopping.[/]");
                         break;
                     }
+
+                    if (maxFailure.Count >= 3)
+                    {
+                        _logger.LogWarning("Injecting user message to redirect model after {Count} identical tool failures", maxFailure.Count);
+                        conversation.AddUserMessage(PromptConstants.RetryLoopRedirectMessage);
+                    }
                 }
-                catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
+                catch (HttpRequestException ex)
                 {
-                    _logger.LogError(fallbackEx, "Non-streaming fallback also failed");
-                    AnsiConsole.MarkupLine($"\n[red]Fallback also failed: {Markup.Escape(fallbackEx.Message)}[/]");
-                    AnsiConsole.MarkupLine($"[grey]  Type: {fallbackEx.GetType().FullName}[/]");
-                    if (fallbackEx.InnerException is not null)
-                        AnsiConsole.MarkupLine($"[grey]  Inner: {Markup.Escape(fallbackEx.InnerException.Message)}[/]");
+                    thinking.Stop();
+                    RestoreConsole();
+                    mdStream.Finish();
+                    _streamingRenderer.Finish();
+                    Console.Write("\x1b[0m");
+                    _logger.LogError(ex, "HTTP error communicating with LLM server");
+                    AnsiConsole.MarkupLine($"\n[red]LLM server error: {Markup.Escape(ex.Message)}[/]");
+                    if (ex.InnerException is not null)
+                        AnsiConsole.MarkupLine($"[red]  Inner: {Markup.Escape(ex.InnerException.Message)}[/]");
+                    AnsiConsole.MarkupLine($"[grey]  Endpoint: {Markup.Escape(_config.LmStudio.BaseUrl)}[/]");
                     ShowLogHint();
                     break;
                 }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    thinking.Stop();
+                    RestoreConsole();
+                    mdStream.Finish();
+                    _streamingRenderer.Finish();
+                    Console.Write("\x1b[0m");
+
+                    _logger.LogError(ex, "Error in agent loop iteration {Iteration}", iteration + 1);
+                    AnsiConsole.MarkupLine($"\n[red]Error: {Markup.Escape(ex.Message)}[/]");
+                    AnsiConsole.MarkupLine($"[grey]  Type: {ex.GetType().FullName}[/]");
+                    if (ex.InnerException is not null)
+                        AnsiConsole.MarkupLine($"[grey]  Inner: {Markup.Escape(ex.InnerException.Message)}[/]");
+                    ShowLogHint();
+
+                    // Try non-streaming fallback
+                    _logger.LogWarning("Attempting non-streaming fallback...");
+                    AnsiConsole.MarkupLine("[yellow]Retrying without streaming...[/]");
+
+                    try
+                    {
+                        var response = await _chatClient.GetResponseAsync(
+                            conversation.GetMessagesForApi(), options, genToken);
+
+                        _logger.LogDebug("Non-streaming response: {MsgCount} messages", response.Messages.Count);
+
+                        var anyToolCalls = false;
+
+                        foreach (var msg in response.Messages)
+                        {
+                            conversation.AddMessage(msg);
+
+                            var text = string.Join("", msg.Contents.OfType<TextContent>().Select(t => t.Text));
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                _logger.LogDebug("Non-streaming text ({Len} chars): {Preview}",
+                                    text.Length, text.Length > 100 ? text[..100] : text);
+                                AnsiConsole.MarkupLine($"[cyan]{Markup.Escape(text)}[/]");
+                            }
+
+                            var functionCalls = msg.Contents.OfType<FunctionCallContent>().ToList();
+                            _logger.LogDebug("Non-streaming function calls: {Count}", functionCalls.Count);
+
+                            if (functionCalls.Count == 0 && !string.IsNullOrEmpty(text))
+                                functionCalls = _toolCallParser.ParseToolCallsFromText(text);
+
+                            if (functionCalls.Count > 0)
+                            {
+                                anyToolCalls = true;
+                                await _toolCallExecutor.ExecuteToolCallsAsync(functionCalls, conversation, genToken);
+                                toolsExecuted = true;
+                            }
+                        }
+
+                        if (!anyToolCalls)
+                        {
+                            _logger.LogDebug("Non-streaming: no tool calls, ending loop");
+                            break;
+                        }
+                    }
+                    catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
+                    {
+                        _logger.LogError(fallbackEx, "Non-streaming fallback also failed");
+                        AnsiConsole.MarkupLine($"\n[red]Fallback also failed: {Markup.Escape(fallbackEx.Message)}[/]");
+                        AnsiConsole.MarkupLine($"[grey]  Type: {fallbackEx.GetType().FullName}[/]");
+                        if (fallbackEx.InnerException is not null)
+                            AnsiConsole.MarkupLine($"[grey]  Inner: {Markup.Escape(fallbackEx.InnerException.Message)}[/]");
+                        ShowLogHint();
+                        break;
+                    }
+                }
             }
-        }
         } // end try wrapping the for loop
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -756,6 +797,13 @@ internal sealed class AgentLoopRunner
         }
         finally
         {
+            // Render the buffered summary as rich markdown (single render, no flicker)
+            if (summaryBuffer.Length > 0)
+            {
+                var renderer = new MarkdownRenderer();
+                renderer.RenderToConsole(summaryBuffer.ToString());
+            }
+
             _generationCts?.Dispose();
             _generationCts = null;
         }
