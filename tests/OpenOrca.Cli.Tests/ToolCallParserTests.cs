@@ -468,4 +468,110 @@ public class ToolCallParserTests
         Assert.Single(results);
         Assert.Equal("bash", results[0].Name);
     }
+
+    // ── Multiple JSON objects in single <tool_call> block ──
+
+    [Fact]
+    public void Parse_MultipleJsonObjectsInSingleTag_ExtractsAll()
+    {
+        var text = """
+            <tool_call>
+            {"name": "read_file", "arguments": {"path": "a.txt"}}
+            {"name": "list_directory", "arguments": {"path": "."}}
+            {"name": "bash", "arguments": {"command": "echo hi"}}
+            </tool_call>
+            """;
+
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Equal(3, results.Count);
+        Assert.Equal("read_file", results[0].Name);
+        Assert.Equal("list_directory", results[1].Name);
+        Assert.Equal("bash", results[2].Name);
+    }
+
+    [Fact]
+    public void Parse_TwoJsonObjectsInSingleTag_ExtractsBoth()
+    {
+        var text = """
+            <tool_call>
+            {"name": "read_file", "arguments": {"path": "test.cs"}}
+            {"name": "write_file", "arguments": {"path": "out.cs", "content": "hello"}}
+            </tool_call>
+            """;
+
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("read_file", results[0].Name);
+        Assert.Equal("write_file", results[1].Name);
+        Assert.Equal("out.cs", results[1].Arguments!["path"]?.ToString());
+    }
+
+    [Fact]
+    public void Parse_MultipleJsonObjectsWithNestedBraces_ExtractsAll()
+    {
+        var text = """
+            <tool_call>
+            {"name": "bash", "arguments": {"command": "echo {hello}"}}
+            {"name": "read_file", "arguments": {"path": "test.txt"}}
+            </tool_call>
+            """;
+
+        var results = _parser.ParseToolCallsFromText(text);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("bash", results[0].Name);
+        Assert.Equal("read_file", results[1].Name);
+    }
+
+    // ── SplitJsonObjects unit tests ──
+
+    [Fact]
+    public void SplitJsonObjects_SingleObject_ReturnsSingle()
+    {
+        var result = ToolCallParser.SplitJsonObjects("""{"name": "test"}""");
+        Assert.Single(result);
+    }
+
+    [Fact]
+    public void SplitJsonObjects_MultipleObjects_SplitsCorrectly()
+    {
+        var input = """{"name": "a"} {"name": "b"} {"name": "c"}""";
+        var result = ToolCallParser.SplitJsonObjects(input);
+        Assert.Equal(3, result.Count);
+    }
+
+    [Fact]
+    public void SplitJsonObjects_NewlineSeparated_SplitsCorrectly()
+    {
+        var input = "{\"name\": \"a\"}\n{\"name\": \"b\"}";
+        var result = ToolCallParser.SplitJsonObjects(input);
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public void SplitJsonObjects_EmptyString_ReturnsEmpty()
+    {
+        Assert.Empty(ToolCallParser.SplitJsonObjects(""));
+    }
+
+    [Fact]
+    public void SplitJsonObjects_NestedBraces_HandledCorrectly()
+    {
+        var input = """{"a": {"b": "c"}} {"d": "e"}""";
+        var result = ToolCallParser.SplitJsonObjects(input);
+        Assert.Equal(2, result.Count);
+        Assert.Contains("\"b\"", result[0]);
+        Assert.Contains("\"d\"", result[1]);
+    }
+
+    [Fact]
+    public void SplitJsonObjects_StringWithBraces_NotSplitIncorrectly()
+    {
+        var input = """{"cmd": "echo {hello} world"}""";
+        var result = ToolCallParser.SplitJsonObjects(input);
+        Assert.Single(result);
+        Assert.Contains("echo {hello} world", result[0]);
+    }
 }
