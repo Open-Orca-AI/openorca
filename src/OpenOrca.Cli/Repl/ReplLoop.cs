@@ -32,6 +32,8 @@ public sealed class ReplLoop
     private readonly CommandHandler _commandHandler;
     private readonly ToolCallExecutor _toolCallExecutor;
     private readonly AgentLoopRunner _agentLoopRunner;
+    private readonly Context7Helper _context7Helper;
+    private readonly DocsPreprocessor _docsPreprocessor;
 
     public ReplLoop(
         IChatClient chatClient,
@@ -90,8 +92,11 @@ public sealed class ReplLoop
             chatClient, config, streamingRenderer, toolCallParser,
             _toolCallExecutor, _commandHandler, _state, logger);
 
+        _context7Helper = new Context7Helper(toolRegistry);
+        _docsPreprocessor = new DocsPreprocessor(_context7Helper);
         _commandHandler.RunAgentLoop = _agentLoopRunner.RunAgentLoopAsync;
         _commandHandler.StreamingRenderer = streamingRenderer;
+        _commandHandler.Context7 = _context7Helper;
     }
 
     public void SetTools(IList<AITool> tools, Func<string, string, CancellationToken, Task<string>> executor)
@@ -244,6 +249,7 @@ public sealed class ReplLoop
                 }
 
                 input = InputPreprocessor.ExpandFileReferences(input);
+                input = await _docsPreprocessor.ExpandDocsReferencesAsync(input, ct);
                 AnsiConsole.MarkupLine($"[on darkblue]\U0001f477 user: {Markup.Escape(input)}[/]");
                 conversation.AddUserMessage(input);
             }

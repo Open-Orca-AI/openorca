@@ -135,6 +135,21 @@ internal static class PromptConstants
         """;
 
     /// <summary>
+    /// System prompt addition when Context7 MCP tools are available.
+    /// Instructs the LLM to proactively use them for library/framework questions.
+    /// </summary>
+    public const string Context7SystemPromptAddition = """
+        LIBRARY DOCUMENTATION (Context7):
+        You have access to live, up-to-date library documentation via Context7. When the user asks about a specific
+        library, framework, or SDK (e.g., React, Express, Next.js, Django, etc.):
+        1. Call `mcp_resolve-library-id` with the library name to get its Context7 ID.
+        2. Call `mcp_get-library-docs` (or `mcp_query-docs`) with the resolved ID and the user's question as the query.
+        3. Use the returned documentation to answer — prefer it over your training data for API specifics, code examples, and migration guides.
+
+        Skip this for general programming concepts that don't change across versions (e.g., "what is a closure?").
+        """;
+
+    /// <summary>
     /// Injected as a user-role message when a tool has failed 3+ times identically.
     /// </summary>
     public const string RetryLoopRedirectMessage =
