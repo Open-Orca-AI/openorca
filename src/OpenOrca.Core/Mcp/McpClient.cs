@@ -55,7 +55,7 @@ public sealed class McpClient : IAsyncDisposable
         {
             protocolVersion = "2024-11-05",
             capabilities = new { },
-            clientInfo = new { name = "openorca", version = "0.6.0" }
+            clientInfo = new { name = "openorca", version = "0.7.0" }
         }), ct);
 
         _logger?.LogDebug("MCP initialize response: {Result}", initResult.GetRawText());

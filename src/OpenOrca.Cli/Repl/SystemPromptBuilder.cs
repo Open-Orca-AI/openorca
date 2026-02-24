@@ -77,6 +77,11 @@ internal sealed class SystemPromptBuilder
         if (_config.AllowedDirectory is not null)
             result += $"\n\nDIRECTORY RESTRICTION: File operations are restricted to: {_config.AllowedDirectory}";
 
+        // Detect Context7 MCP tools and inject documentation instructions
+        if (tools?.OfType<AIFunction>().Any(t =>
+            t.Name.EndsWith("resolve-library-id", StringComparison.OrdinalIgnoreCase)) == true)
+            result += "\n\n" + PromptConstants.Context7SystemPromptAddition;
+
         return result;
     }
 

@@ -47,6 +47,11 @@ internal sealed class CommandHandler
     /// </summary>
     public StreamingRenderer? StreamingRenderer { get; set; }
 
+    /// <summary>
+    /// Context7 helper for the /docs command. Set by ReplLoop after construction.
+    /// </summary>
+    public Context7Helper? Context7 { get; set; }
+
     public CommandHandler(
         IChatClient chatClient,
         OrcaConfig config,
@@ -194,6 +199,10 @@ internal sealed class CommandHandler
 
             case SlashCommand.Benchmark:
                 await HandleBenchmarkAsync(ct);
+                return false;
+
+            case SlashCommand.Docs:
+                await HandleDocsAsync(command.Args, conversation, ct);
                 return false;
 
             case SlashCommand.CustomCommand:
@@ -1507,6 +1516,67 @@ internal sealed class CommandHandler
         }
     }
 
+    private async Task HandleDocsAsync(string[] args, Conversation conversation, CancellationToken ct)
+    {
+        if (Context7 is null || !Context7.IsAvailable())
+        {
+            AnsiConsole.MarkupLine("[yellow]Context7 is not configured.[/]");
+            AnsiConsole.MarkupLine("[grey]To enable, add a Context7 MCP server to your config.json mcpServers section.[/]");
+            return;
+        }
+
+        if (args.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]Usage: /docs <library> [query][/]");
+            AnsiConsole.MarkupLine("[grey]Examples: /docs react hooks  |  /docs express middleware routing[/]");
+            return;
+        }
+
+        var library = args[0];
+        var query = args.Length > 1 ? string.Join(" ", args[1..]) : null;
+
+        try
+        {
+            string? docs = null;
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("cyan"))
+                .StartAsync($"Fetching docs for {library}...", async _ =>
+                {
+                    docs = await Context7.FetchDocsAsync(library, query, ct);
+                });
+
+            if (docs is null)
+            {
+                AnsiConsole.MarkupLine($"[red]Failed to fetch documentation for '{Markup.Escape(library)}'.[/]");
+                AnsiConsole.MarkupLine("[grey]The library may not be available in Context7, or the server may be unreachable.[/]");
+                return;
+            }
+
+            // Show a truncated preview in a panel
+            var preview = docs.Length > 500 ? docs[..500] + "\n... (truncated in preview)" : docs;
+            AnsiConsole.Write(new Panel(Markup.Escape(preview.TrimEnd()))
+                .Header($"[cyan]Documentation: {Markup.Escape(library)}[/]")
+                .Border(BoxBorder.Rounded)
+                .BorderColor(Color.Cyan1));
+
+            AnsiConsole.MarkupLine($"[green]Injected {docs.Length:N0} chars of documentation into context.[/]");
+
+            // Inject full docs into conversation
+            var queryNote = query is not null ? $" (query: {query})" : "";
+            conversation.AddUserMessage($"[Documentation for {library}{queryNote} via Context7]\n{docs}\n[/Documentation]");
+        }
+        catch (OperationCanceledException)
+        {
+            AnsiConsole.MarkupLine("[yellow]Documentation fetch cancelled.[/]");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch docs for {Library}", library);
+            AnsiConsole.MarkupLine($"[red]Failed to fetch docs: {Markup.Escape(ex.Message)}[/]");
+        }
+    }
+
     private async Task HandleReviewAsync(string[] args, CancellationToken ct)
     {
         string task;
@@ -1602,6 +1672,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/checkpoint list|diff|restore|clear"), "Manage file checkpoints (auto-saved before edits)");
         table.AddRow(Markup.Escape("/fork [name]"), "Fork current session (creates a branch)");
         table.AddRow(Markup.Escape("/review [staged|commit|file]"), "Run code review via sub-agent");
+        table.AddRow(Markup.Escape("/docs <library> [query]"), "Fetch library docs via Context7");
         table.AddRow(Markup.Escape("/benchmark, /bench"), "Benchmark all loaded models with a coding task");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
