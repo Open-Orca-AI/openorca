@@ -143,7 +143,7 @@ public sealed class MemoryManager
                 if (preview.Length > 80)
                     preview = preview[..77] + "...";
             }
-            catch { }
+            catch { /* best effort file preview */ }
             results.Add((file, preview));
         }
     }
@@ -163,7 +163,7 @@ public sealed class MemoryManager
         foreach (var file in files.Skip(_config.Memory.MaxMemoryFiles))
         {
             try { File.Delete(file); }
-            catch { }
+            catch { /* best effort file cleanup */ }
         }
 
         await Task.CompletedTask;
@@ -177,7 +177,7 @@ public sealed class MemoryManager
         foreach (var file in Directory.GetFiles(dir, "*.md"))
         {
             try { File.Delete(file); }
-            catch { }
+            catch { /* best effort file cleanup */ }
         }
     }
 }

@@ -1,6 +1,6 @@
-using System.Text.Json;
 using OpenOrca.Tools.Git;
 using Xunit;
+using static OpenOrca.Tools.Tests.TestHelpers;
 
 namespace OpenOrca.Tools.Tests;
 
@@ -46,12 +46,6 @@ public class GitToolTests : IDisposable
         using var proc = System.Diagnostics.Process.Start(psi)!;
         proc.WaitForExit();
     }
-
-    private static JsonElement MakeArgs(string json) =>
-        JsonDocument.Parse(json).RootElement;
-
-    private string EscapePath(string path) =>
-        path.Replace("\\", "\\\\");
 
     // ── GitStatusTool ──
 

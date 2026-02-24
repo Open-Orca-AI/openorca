@@ -2,7 +2,7 @@ using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
 using OpenOrca.Tools.Utilities;
 
-namespace OpenOrca.Tools.Utility;
+namespace OpenOrca.Tools.UtilityTools;
 
 public sealed class TaskListTool : IOrcaTool
 {

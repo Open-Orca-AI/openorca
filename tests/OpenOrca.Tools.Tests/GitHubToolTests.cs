@@ -1,14 +1,11 @@
-using System.Text.Json;
 using OpenOrca.Tools.GitHub;
 using Xunit;
+using static OpenOrca.Tools.Tests.TestHelpers;
 
 namespace OpenOrca.Tools.Tests;
 
 public class GitHubToolTests
 {
-    private static JsonElement MakeArgs(string json) =>
-        JsonDocument.Parse(json).RootElement;
-
     [Fact]
     public void GitHubTool_HasCorrectName()
     {

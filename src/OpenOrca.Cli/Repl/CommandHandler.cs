@@ -3,13 +3,13 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using OpenOrca.Cli.CustomCommands;
 using OpenOrca.Cli.Rendering;
 using OpenOrca.Core.Chat;
 using OpenOrca.Core.Configuration;
 using OpenOrca.Core.Orchestration;
 using OpenOrca.Core.Serialization;
 using OpenOrca.Core.Session;
-using OpenOrca.Cli.CustomCommands;
 using Spectre.Console;
 
 namespace OpenOrca.Cli.Repl;
@@ -1622,7 +1622,7 @@ internal sealed class CommandHandler
                     firstLine = reader.ReadLine()?.TrimStart('#', ' ') ?? "";
                     if (firstLine.Length > 60) firstLine = firstLine[..57] + "...";
                 }
-                catch { }
+                catch { /* best effort file preview */ }
                 AnsiConsole.MarkupLine($"  [cyan]/{Markup.Escape(name)}[/] {Markup.Escape(firstLine)}");
             }
         }

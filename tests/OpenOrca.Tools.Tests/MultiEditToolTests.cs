@@ -1,6 +1,6 @@
-using System.Text.Json;
 using OpenOrca.Tools.FileSystem;
 using Xunit;
+using static OpenOrca.Tools.Tests.TestHelpers;
 
 namespace OpenOrca.Tools.Tests;
 
@@ -19,11 +19,6 @@ public class MultiEditToolTests : IDisposable
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, true);
     }
-
-    private string EscapePath(string path) => path.Replace("\\", "\\\\");
-
-    private static JsonElement MakeArgs(string json) =>
-        JsonDocument.Parse(json).RootElement;
 
     [Fact]
     public async Task MultiEdit_AppliesEditsToMultipleFiles()

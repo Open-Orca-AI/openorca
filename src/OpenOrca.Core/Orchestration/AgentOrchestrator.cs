@@ -221,17 +221,12 @@ public sealed class AgentOrchestrator
 
     private void AddToolResult(AgentContext context, FunctionCallContent call, string result)
     {
-        if (_config.LmStudio.NativeToolCalling)
-        {
-            var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
-            toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
-            context.Conversation.AddMessage(toolResultMessage);
-        }
-        else
-        {
-            // Text-based models cannot handle FunctionResultContent messages
-            context.Conversation.AddMessage(
-                new ChatMessage(ChatRole.User, $"[Tool result for {call.Name}]: {result}"));
-        }
+        // The orchestrator always sends native tool definitions (options.Tools), so the LLM
+        // responds with native FunctionCallContent. Results must use the matching native format
+        // (ChatRole.Tool + FunctionResultContent), regardless of the NativeToolCalling config
+        // which only controls the main REPL's text-based fallback.
+        var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
+        toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
+        context.Conversation.AddMessage(toolResultMessage);
     }
 }

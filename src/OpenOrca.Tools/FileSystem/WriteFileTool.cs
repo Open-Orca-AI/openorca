@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -62,11 +63,11 @@ public sealed class WriteFileTool : IOrcaTool
 
             if (append)
             {
-                await File.AppendAllTextAsync(path, content, ct);
+                await FileRetryHelper.RetryOnIOExceptionAsync(() => File.AppendAllTextAsync(path, content, ct), ct);
                 return ToolResult.Success($"Appended: {path} ({content.Length} chars added)");
             }
 
-            await File.WriteAllTextAsync(path, content, ct);
+            await FileRetryHelper.RetryOnIOExceptionAsync(() => File.WriteAllTextAsync(path, content, ct), ct);
             return ToolResult.Success($"Written: {path} ({content.Length} chars)");
         }
         catch (Exception ex)

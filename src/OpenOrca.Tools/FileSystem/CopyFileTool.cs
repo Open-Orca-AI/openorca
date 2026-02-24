@@ -35,7 +35,7 @@ public sealed class CopyFileTool : IOrcaTool
     }
     """).RootElement;
 
-    public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var source = Path.GetFullPath(args.GetProperty("source").GetString()!);
         var destination = Path.GetFullPath(args.GetProperty("destination").GetString()!);
@@ -51,25 +51,25 @@ public sealed class CopyFileTool : IOrcaTool
 
             if (File.Exists(source))
             {
-                File.Copy(source, destination, overwrite);
-                return Task.FromResult(ToolResult.Success($"Copied file: {source} → {destination}"));
+                await FileRetryHelper.RetryOnIOExceptionAsync(() => File.Copy(source, destination, overwrite), ct);
+                return ToolResult.Success($"Copied file: {source} → {destination}");
             }
 
             if (Directory.Exists(source))
             {
                 if (!recursive)
-                    return Task.FromResult(ToolResult.Error(
-                        $"Source is a directory. Set recursive=true to copy directories."));
+                    return ToolResult.Error(
+                        $"Source is a directory. Set recursive=true to copy directories.");
 
                 CopyDirectory(source, destination, overwrite);
-                return Task.FromResult(ToolResult.Success($"Copied directory: {source} → {destination}"));
+                return ToolResult.Success($"Copied directory: {source} → {destination}");
             }
 
-            return Task.FromResult(ToolResult.Error($"Source not found: {source}"));
+            return ToolResult.Error($"Source not found: {source}");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(ToolResult.Error($"Error copying: {ex.Message}"));
+            return ToolResult.Error($"Error copying: {ex.Message}");
         }
     }
 
