@@ -59,6 +59,7 @@ public sealed class ReplState
     public int TotalTurns { get => _totalTurns; set => Interlocked.Exchange(ref _totalTurns, value); }
     public Stopwatch SessionStopwatch { get; } = Stopwatch.StartNew();
     public string? LastAssistantResponse { get; set; }
+    public string? SuggestedNextPrompt { get; set; }
     public string? CurrentSessionId { get; set; }
 
     /// <summary>

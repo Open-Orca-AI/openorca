@@ -86,6 +86,7 @@ internal sealed class AgentLoopRunner
         var summaryBuffer = new StringBuilder();
         const int maxSummaryContinuations = 3;
         var summaryContinuations = 0;
+        var nextPromptFilter = new NextPromptTagFilter();
         _toolCallExecutor.ClearRecentErrors();
 
         // Initialize thinking visibility from config on first run
@@ -298,7 +299,7 @@ internal sealed class AgentLoopRunner
 
                                     if (thinkingVisible)
                                     {
-                                        _streamingRenderer.AppendToken(toolCallFilter.Filter(textContent.Text));
+                                        _streamingRenderer.AppendToken(nextPromptFilter.Filter(toolCallFilter.Filter(textContent.Text)));
                                     }
                                     else
                                     {
@@ -315,7 +316,7 @@ internal sealed class AgentLoopRunner
 
                                         if (responseText.Length > 0)
                                         {
-                                            var filtered = toolCallFilter.Filter(responseText);
+                                            var filtered = nextPromptFilter.Filter(toolCallFilter.Filter(responseText));
                                             if (filtered.Length > 0)
                                             {
                                                 if (toolsExecuted)
@@ -419,7 +420,7 @@ internal sealed class AgentLoopRunner
 
                                         if (thinkingVisible)
                                         {
-                                            _streamingRenderer.AppendToken(toolCallFilter.Filter(tc.Text));
+                                            _streamingRenderer.AppendToken(nextPromptFilter.Filter(toolCallFilter.Filter(tc.Text)));
                                         }
                                         else
                                         {
@@ -435,7 +436,7 @@ internal sealed class AgentLoopRunner
 
                                             if (responseText.Length > 0)
                                             {
-                                                var filtered = toolCallFilter.Filter(responseText);
+                                                var filtered = nextPromptFilter.Filter(toolCallFilter.Filter(responseText));
                                                 if (filtered.Length > 0)
                                                 {
                                                     if (toolsExecuted)
@@ -499,11 +500,18 @@ internal sealed class AgentLoopRunner
                         break;
                     }
 
-                    var fullText = string.Join("", textParts);
+                    var rawText = string.Join("", textParts);
+                    _state.SuggestedNextPrompt = nextPromptFilter.CapturedPrompt;
+                    var fullText = StripNextPromptTag(rawText);
                     _state.LastAssistantResponse = fullText;
                     _state.TotalOutputTokens += tokenCount;
                     _logger.LogDebug("Streaming complete: {TokenCount} tokens, {CharCount} chars, {ContentCount} content items",
                         tokenCount, fullText.Length, allContents.Count);
+                    if (_state.SuggestedNextPrompt is not null)
+                        _logger.LogDebug("Captured next-prompt suggestion: {Suggestion}", _state.SuggestedNextPrompt);
+                    else if (rawText.Contains("<next-prompt", StringComparison.OrdinalIgnoreCase))
+                        _logger.LogWarning("Raw text contains <next-prompt but filter didn't capture it — raw tail: {Tail}",
+                            rawText.Length > 200 ? rawText[^200..] : rawText);
 
                     if (thinkingVisible)
                     {
@@ -828,6 +836,25 @@ internal sealed class AgentLoopRunner
             _generationCts?.Dispose();
             _generationCts = null;
         }
+    }
+
+    /// <summary>
+    /// Strip &lt;next-prompt&gt;...&lt;/next-prompt&gt; from raw text so it doesn't leak into conversation history.
+    /// </summary>
+    private static string StripNextPromptTag(string text)
+    {
+        const string open = "<next-prompt>";
+        const string close = "</next-prompt>";
+
+        var startIdx = text.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+        if (startIdx < 0)
+            return text;
+
+        var endIdx = text.IndexOf(close, startIdx, StringComparison.OrdinalIgnoreCase);
+        if (endIdx < 0)
+            return text[..startIdx].TrimEnd();
+
+        return (text[..startIdx] + text[(endIdx + close.Length)..]).Trim();
     }
 
     /// <summary>

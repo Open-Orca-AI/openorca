@@ -82,6 +82,8 @@ internal sealed class SystemPromptBuilder
             t.Name.EndsWith("resolve-library-id", StringComparison.OrdinalIgnoreCase)) == true)
             result += "\n\n" + PromptConstants.Context7SystemPromptAddition;
 
+        result += "\n\n" + PromptConstants.NextPromptInstruction;
+
         return result;
     }
 

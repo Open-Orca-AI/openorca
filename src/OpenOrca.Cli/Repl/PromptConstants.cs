@@ -132,6 +132,11 @@ internal static class PromptConstants
         - **Key findings**: Any notable discoveries, warnings, or issues encountered (omit if none).
         - **Suggested next steps**: Actionable follow-ups the user might want to do (omit if none).
         Keep it concise. Use `code` formatting for file paths and commands. Do NOT call any tools.
+
+        IMPORTANT: At the very end of your response, on its own line, add a <next-prompt> tag containing
+        a short follow-up prompt the user might type next (under 80 chars).
+        Example: <next-prompt>run the tests</next-prompt>
+        If there is no natural follow-up, omit the tag.
         """;
 
     /// <summary>
@@ -148,6 +153,17 @@ internal static class PromptConstants
 
         Skip this for general programming concepts that don't change across versions (e.g., "what is a closure?").
         """;
+
+    /// <summary>
+    /// Appended to the system prompt to request a suggested next prompt in the response.
+    /// The &lt;next-prompt&gt; tag is stripped during streaming and shown as ghost text.
+    /// </summary>
+    public const string NextPromptInstruction =
+        "SUGGESTED NEXT PROMPT:\n" +
+        "At the very end of every response, include a <next-prompt> tag with a short follow-up prompt " +
+        "the user might type next (under 80 characters). Example: <next-prompt>run the tests</next-prompt>\n" +
+        "If there is no natural follow-up, omit the tag entirely. " +
+        "The tag must appear AFTER all other content — never inside <think> or <tool_call> blocks.";
 
     /// <summary>
     /// Injected as a user-role message when a tool has failed 3+ times identically.
