@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Git;
 
@@ -40,8 +41,8 @@ public sealed class GitLogTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
-        var count = args.TryGetProperty("count", out var c) ? c.GetInt32() : 20;
-        var oneline = !args.TryGetProperty("oneline", out var o) || o.GetBoolean();
+        var count = args.TryGetProperty("count", out var c) ? c.GetInt32Lenient(20) : 20;
+        var oneline = !args.TryGetProperty("oneline", out var o) || o.GetBooleanLenient(true);
         var file = args.TryGetProperty("file", out var f) ? f.GetString() : null;
         var author = args.TryGetProperty("author", out var a) ? a.GetString() : null;
 

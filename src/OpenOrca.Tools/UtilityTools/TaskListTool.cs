@@ -58,7 +58,7 @@ public sealed class TaskListTool : IOrcaTool
         if (!args.TryGetProperty("id", out var idProp))
             return Task.FromResult(ToolResult.Error("Task ID is required for 'complete'."));
 
-        var id = idProp.GetInt32();
+        var id = idProp.GetInt32Lenient();
         if (!TaskStore.Complete(id))
             return Task.FromResult(ToolResult.Error($"Task #{id} not found."));
 
@@ -70,7 +70,7 @@ public sealed class TaskListTool : IOrcaTool
         if (!args.TryGetProperty("id", out var idProp))
             return Task.FromResult(ToolResult.Error("Task ID is required for 'remove'."));
 
-        var id = idProp.GetInt32();
+        var id = idProp.GetInt32Lenient();
         if (!TaskStore.Remove(id))
             return Task.FromResult(ToolResult.Error($"Task #{id} not found."));
 

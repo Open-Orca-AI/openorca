@@ -30,7 +30,7 @@ public sealed class DeleteFileTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.GetProperty("path").GetString()!;
-        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBoolean();
+        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBooleanLenient();
 
         path = Path.GetFullPath(path);
 

@@ -39,8 +39,8 @@ public sealed class CopyFileTool : IOrcaTool
     {
         var source = Path.GetFullPath(args.GetProperty("source").GetString()!);
         var destination = Path.GetFullPath(args.GetProperty("destination").GetString()!);
-        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBoolean();
-        var overwrite = args.TryGetProperty("overwrite", out var ow) && ow.GetBoolean();
+        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBooleanLenient();
+        var overwrite = args.TryGetProperty("overwrite", out var ow) && ow.GetBooleanLenient();
 
         try
         {

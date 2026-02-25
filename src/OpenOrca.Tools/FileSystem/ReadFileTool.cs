@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -34,8 +35,8 @@ public sealed class ReadFileTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.GetProperty("path").GetString()!;
-        var offset = args.TryGetProperty("offset", out var o) ? o.GetInt32() : 1;
-        var limit = args.TryGetProperty("limit", out var l) ? l.GetInt32() : 2000;
+        var offset = args.TryGetProperty("offset", out var o) ? o.GetInt32Lenient(1) : 1;
+        var limit = args.TryGetProperty("limit", out var l) ? l.GetInt32Lenient(2000) : 2000;
 
         path = Path.GetFullPath(path);
 

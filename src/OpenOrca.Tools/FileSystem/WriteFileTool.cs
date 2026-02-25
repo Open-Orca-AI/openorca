@@ -36,7 +36,7 @@ public sealed class WriteFileTool : IOrcaTool
     {
         var path = args.GetProperty("path").GetString()!;
         var content = args.GetProperty("content").GetString()!;
-        var append = args.TryGetProperty("append", out var a) && a.GetBoolean();
+        var append = args.TryGetProperty("append", out var a) && a.GetBooleanLenient();
 
         path = Path.GetFullPath(path);
 

@@ -45,8 +45,8 @@ public sealed class EditFileTool : IOrcaTool
         var path = args.GetProperty("path").GetString()!;
         var oldString = args.GetProperty("old_string").GetString()!;
         var newString = args.GetProperty("new_string").GetString()!;
-        var replaceAll = args.TryGetProperty("replace_all", out var ra) && ra.GetBoolean();
-        var createIfMissing = args.TryGetProperty("create_if_missing", out var cim) && cim.GetBoolean();
+        var replaceAll = args.TryGetProperty("replace_all", out var ra) && ra.GetBooleanLenient();
+        var createIfMissing = args.TryGetProperty("create_if_missing", out var cim) && cim.GetBooleanLenient();
 
         path = Path.GetFullPath(path);
 

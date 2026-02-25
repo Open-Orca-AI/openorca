@@ -36,7 +36,7 @@ public sealed class WebSearchTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var query = args.GetProperty("query").GetString()!;
-        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32() : 5;
+        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32Lenient(5) : 5;
 
         try
         {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Git;
 
@@ -37,7 +38,7 @@ public sealed class GitPushTool : IOrcaTool
     {
         var remote = args.TryGetProperty("remote", out var r) ? r.GetString() ?? "origin" : "origin";
         var branch = args.TryGetProperty("branch", out var b) ? b.GetString() : null;
-        var force = args.TryGetProperty("force", out var f) && f.GetBoolean();
+        var force = args.TryGetProperty("force", out var f) && f.GetBooleanLenient();
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
         var gitArgs = $"push {GitHelper.EscapeArg(remote)}";
