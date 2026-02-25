@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -37,9 +38,9 @@ public sealed class ListDirectoryTool : IOrcaTool
     public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
-        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBoolean();
-        var showHidden = args.TryGetProperty("show_hidden", out var sh) && sh.GetBoolean();
-        var showSize = args.TryGetProperty("show_size", out var ss) && ss.GetBoolean();
+        var recursive = args.TryGetProperty("recursive", out var r) && r.GetBooleanLenient();
+        var showHidden = args.TryGetProperty("show_hidden", out var sh) && sh.GetBooleanLenient();
+        var showSize = args.TryGetProperty("show_size", out var ss) && ss.GetBooleanLenient();
 
         path = Path.GetFullPath(path);
 

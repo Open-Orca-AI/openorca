@@ -36,8 +36,8 @@ public sealed class WebFetchTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var url = args.GetProperty("url").GetString()!;
-        var maxLength = args.TryGetProperty("max_length", out var ml) ? ml.GetInt32() : 20000;
-        var raw = args.TryGetProperty("raw", out var r) && r.GetBoolean();
+        var maxLength = args.TryGetProperty("max_length", out var ml) ? ml.GetInt32Lenient(20000) : 20000;
+        var raw = args.TryGetProperty("raw", out var r) && r.GetBooleanLenient();
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != "http" && uri.Scheme != "https"))

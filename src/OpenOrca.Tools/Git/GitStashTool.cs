@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Git;
 
@@ -38,7 +39,7 @@ public sealed class GitStashTool : IOrcaTool
     {
         var action = args.TryGetProperty("action", out var a) ? a.GetString() ?? "push" : "push";
         var message = args.TryGetProperty("message", out var m) ? m.GetString() : null;
-        var index = args.TryGetProperty("index", out var idx) ? idx.GetInt32() : 0;
+        var index = args.TryGetProperty("index", out var idx) ? idx.GetInt32Lenient(0) : 0;
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
         var gitArgs = action switch

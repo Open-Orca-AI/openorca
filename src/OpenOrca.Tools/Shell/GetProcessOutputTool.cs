@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Shell;
 
@@ -30,7 +31,7 @@ public sealed class GetProcessOutputTool : IOrcaTool
     public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var processId = args.GetProperty("process_id").GetString()!;
-        var tailLines = args.TryGetProperty("tail_lines", out var tl) ? tl.GetInt32() : 50;
+        var tailLines = args.TryGetProperty("tail_lines", out var tl) ? tl.GetInt32Lenient(50) : 50;
 
         // Resolve "last"/"latest" to the most recently started process
         if (processId.Equals("last", StringComparison.OrdinalIgnoreCase) ||

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -42,7 +43,7 @@ public sealed class GlobTool : IOrcaTool
         var pattern = args.GetProperty("pattern").GetString()!;
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
         var exclude = args.TryGetProperty("exclude", out var ex) ? ex.GetString() : null;
-        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32() : 500;
+        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32Lenient(500) : 500;
         path = Path.GetFullPath(path);
 
         if (!Directory.Exists(path))

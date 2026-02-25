@@ -42,7 +42,7 @@ public sealed class NetworkDiagnosticsTool : IOrcaTool
     {
         var action = args.GetProperty("action").GetString()!;
         var target = args.GetProperty("target").GetString()!;
-        var timeout = args.TryGetProperty("timeout_seconds", out var t) ? t.GetInt32() : 5;
+        var timeout = args.TryGetProperty("timeout_seconds", out var t) ? t.GetInt32Lenient(5) : 5;
         if (timeout <= 0 || timeout > 30) timeout = 5;
 
         return action switch

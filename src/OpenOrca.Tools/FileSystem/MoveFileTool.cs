@@ -35,7 +35,7 @@ public sealed class MoveFileTool : IOrcaTool
     {
         var source = Path.GetFullPath(args.GetProperty("source").GetString()!);
         var destination = Path.GetFullPath(args.GetProperty("destination").GetString()!);
-        var overwrite = args.TryGetProperty("overwrite", out var ow) && ow.GetBoolean();
+        var overwrite = args.TryGetProperty("overwrite", out var ow) && ow.GetBooleanLenient();
 
         if (PathSafetyHelper.IsDangerousPath(source))
             return Task.FromResult(ToolResult.Error($"Refusing to move dangerous path: {source}"));

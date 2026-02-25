@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Git;
 
@@ -36,7 +37,7 @@ public sealed class GitDiffTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
-        var staged = args.TryGetProperty("staged", out var s) && s.GetBoolean();
+        var staged = args.TryGetProperty("staged", out var s) && s.GetBooleanLenient();
         var file = args.TryGetProperty("file", out var f) ? f.GetString() : null;
         var baseBranch = args.TryGetProperty("base", out var b) ? b.GetString() : null;
 

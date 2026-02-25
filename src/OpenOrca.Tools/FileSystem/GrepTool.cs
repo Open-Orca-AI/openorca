@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.FileSystem;
 
@@ -56,10 +57,10 @@ public sealed class GrepTool : IOrcaTool
         var pattern = args.GetProperty("pattern").GetString()!;
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
         var glob = args.TryGetProperty("glob", out var g) ? g.GetString() : null;
-        var context = args.TryGetProperty("context", out var c) ? c.GetInt32() : 0;
-        var caseInsensitive = args.TryGetProperty("case_insensitive", out var ci) && ci.GetBoolean();
+        var context = args.TryGetProperty("context", out var c) ? c.GetInt32Lenient(0) : 0;
+        var caseInsensitive = args.TryGetProperty("case_insensitive", out var ci) && ci.GetBooleanLenient();
         var outputMode = args.TryGetProperty("output_mode", out var om) ? om.GetString() ?? "content" : "content";
-        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32() : 500;
+        var maxResults = args.TryGetProperty("max_results", out var mr) ? mr.GetInt32Lenient(500) : 500;
 
         path = Path.GetFullPath(path);
 

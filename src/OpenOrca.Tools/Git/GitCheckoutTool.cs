@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Git;
 
@@ -33,7 +34,7 @@ public sealed class GitCheckoutTool : IOrcaTool
     public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
         var target = args.GetProperty("target").GetString()!;
-        var create = args.TryGetProperty("create", out var c) && c.GetBoolean();
+        var create = args.TryGetProperty("create", out var c) && c.GetBooleanLenient();
         var path = args.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
 
         var flag = create ? "-b " : "";

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.Shell;
 
@@ -54,7 +55,7 @@ public sealed class BashTool : IOrcaTool, IStreamingOrcaTool
     {
         var command = args.GetProperty("command").GetString()!;
         var workDir = args.TryGetProperty("working_directory", out var wd) ? wd.GetString() ?? "." : ".";
-        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? GetIntTolerant(ts, IdleTimeoutSeconds) : IdleTimeoutSeconds;
+        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? ts.GetInt32Lenient(IdleTimeoutSeconds) : IdleTimeoutSeconds;
 
         workDir = Path.GetFullPath(workDir);
         Logger?.LogDebug("Executing bash: {Command} in {WorkDir} (timeout: {Timeout}s)",
@@ -187,15 +188,4 @@ public sealed class BashTool : IOrcaTool, IStreamingOrcaTool
         return ToolResult.Success(sb.ToString());
     }
 
-    /// <summary>
-    /// Parse an integer from a JsonElement, tolerating string-typed numbers from LLMs.
-    /// </summary>
-    private static int GetIntTolerant(JsonElement element, int defaultValue)
-    {
-        if (element.ValueKind == JsonValueKind.Number)
-            return element.GetInt32();
-        if (element.ValueKind == JsonValueKind.String && int.TryParse(element.GetString(), out var parsed))
-            return parsed;
-        return defaultValue;
-    }
 }

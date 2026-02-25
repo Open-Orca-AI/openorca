@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using OpenOrca.Tools.Abstractions;
+using OpenOrca.Tools.Utilities;
 
 namespace OpenOrca.Tools.GitHub;
 
@@ -93,7 +94,7 @@ public sealed class GitHubTool : IOrcaTool
 
     private static string? BuildGhArgs(string action, JsonElement args)
     {
-        var number = args.TryGetProperty("number", out var n) ? n.GetInt32() : 0;
+        var number = args.TryGetProperty("number", out var n) ? n.GetInt32Lenient(0) : 0;
         var title = args.TryGetProperty("title", out var t) ? t.GetString() : null;
         var body = args.TryGetProperty("body", out var b) ? b.GetString() : null;
         var baseBranch = args.TryGetProperty("base", out var bb) ? bb.GetString() : null;
@@ -101,7 +102,7 @@ public sealed class GitHubTool : IOrcaTool
         var state = args.TryGetProperty("state", out var s) ? s.GetString() ?? "open" : "open";
         var labels = args.TryGetProperty("labels", out var l) ? l.GetString() : null;
         var mergeMethod = args.TryGetProperty("merge_method", out var mm) ? mm.GetString() ?? "merge" : "merge";
-        var limit = args.TryGetProperty("limit", out var lm) ? lm.GetInt32() : 20;
+        var limit = args.TryGetProperty("limit", out var lm) ? lm.GetInt32Lenient(20) : 20;
         var repo = args.TryGetProperty("repo", out var r) ? r.GetString() : null;
 
         var repoFlag = !string.IsNullOrEmpty(repo) ? $" --repo {repo}" : "";

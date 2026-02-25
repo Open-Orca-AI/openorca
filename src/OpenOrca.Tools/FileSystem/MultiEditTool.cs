@@ -57,7 +57,7 @@ public sealed class MultiEditTool : IOrcaTool
             var path = item.TryGetProperty("path", out var p) ? p.GetString() : null;
             var oldString = item.TryGetProperty("old_string", out var o) ? o.GetString() : null;
             var newString = item.TryGetProperty("new_string", out var n) ? n.GetString() : null;
-            var replaceAll = item.TryGetProperty("replace_all", out var ra) && ra.GetBoolean();
+            var replaceAll = item.TryGetProperty("replace_all", out var ra) && ra.GetBooleanLenient();
 
             if (string.IsNullOrEmpty(path) || oldString is null || newString is null)
                 return ToolResult.Error("Each edit must have 'path', 'old_string', and 'new_string'.");
