@@ -12,6 +12,17 @@ public class ParameterAliasResolverTests
         return JsonDocument.Parse($"{{\"type\": \"object\", \"properties\": {{{props}}}}}").RootElement;
     }
 
+    private static JsonElement MakeSchemaWithRequired(string[] propertyNames, string[] required, Dictionary<string, string>? typeOverrides = null)
+    {
+        var props = string.Join(", ", propertyNames.Select(n =>
+        {
+            var type = typeOverrides != null && typeOverrides.TryGetValue(n, out var t) ? t : "string";
+            return $"\"{n}\": {{\"type\": \"{type}\"}}";
+        }));
+        var req = string.Join(", ", required.Select(r => $"\"{r}\""));
+        return JsonDocument.Parse($"{{\"type\": \"object\", \"properties\": {{{props}}}, \"required\": [{req}]}}").RootElement;
+    }
+
     [Fact]
     public void FilePath_RemapsToPath()
     {
@@ -157,5 +168,84 @@ public class ParameterAliasResolverTests
 
         Assert.Equal("/real.txt", parsed.GetProperty("path").GetString());
         Assert.True(parsed.TryGetProperty("dir", out _));
+    }
+
+    [Fact]
+    public void Objective_RemapsToTask()
+    {
+        var schema = MakeSchema("task", "agent_type");
+        var args = "{\"objective\": \"analyze the code\", \"agent_type\": \"reviewer\"}";
+        var result = ParameterAliasResolver.ResolveAliases(args, schema);
+        var parsed = JsonDocument.Parse(result).RootElement;
+
+        Assert.True(parsed.TryGetProperty("task", out var val));
+        Assert.Equal("analyze the code", val.GetString());
+        Assert.False(parsed.TryGetProperty("objective", out _));
+    }
+
+    [Fact]
+    public void Goal_RemapsToTask()
+    {
+        var schema = MakeSchema("task", "agent_type");
+        var args = "{\"goal\": \"fix the bug\", \"agent_type\": \"coder\"}";
+        var result = ParameterAliasResolver.ResolveAliases(args, schema);
+        var parsed = JsonDocument.Parse(result).RootElement;
+
+        Assert.True(parsed.TryGetProperty("task", out var val));
+        Assert.Equal("fix the bug", val.GetString());
+        Assert.False(parsed.TryGetProperty("goal", out _));
+    }
+
+    [Fact]
+    public void InferMissing_SingleUnrecognizedArg_MapsToMissingRequired()
+    {
+        // "request" is not in alias map and not in schema — should infer to "task"
+        var schema = MakeSchemaWithRequired(
+            ["task", "agent_type"], ["task", "agent_type"]);
+        var args = "{\"agent_type\": \"explore\", \"request\": \"find all controllers\"}";
+        var result = ParameterAliasResolver.InferMissingRequired(args, schema);
+        var parsed = JsonDocument.Parse(result).RootElement;
+
+        Assert.True(parsed.TryGetProperty("task", out var val));
+        Assert.Equal("find all controllers", val.GetString());
+        Assert.True(parsed.TryGetProperty("agent_type", out _));
+        Assert.False(parsed.TryGetProperty("request", out _));
+    }
+
+    [Fact]
+    public void InferMissing_NoUnrecognizedArgs_ReturnsUnchanged()
+    {
+        // All args are recognized — nothing to infer
+        var schema = MakeSchemaWithRequired(
+            ["task", "agent_type"], ["task", "agent_type"]);
+        var args = "{\"task\": \"do something\", \"agent_type\": \"explore\"}";
+        var result = ParameterAliasResolver.InferMissingRequired(args, schema);
+
+        Assert.Equal(args, result);
+    }
+
+    [Fact]
+    public void InferMissing_MultipleUnrecognized_ReturnsUnchanged()
+    {
+        // Two unrecognized args — ambiguous, should not guess
+        var schema = MakeSchemaWithRequired(
+            ["task", "agent_type"], ["task", "agent_type"]);
+        var args = "{\"agent_type\": \"explore\", \"request\": \"find stuff\", \"extra\": \"more stuff\"}";
+        var result = ParameterAliasResolver.InferMissingRequired(args, schema);
+
+        Assert.Equal(args, result);
+    }
+
+    [Fact]
+    public void InferMissing_MissingArgNotString_ReturnsUnchanged()
+    {
+        // The missing required arg has type "integer", not "string" — should not infer
+        var schema = MakeSchemaWithRequired(
+            ["count", "name"], ["count", "name"],
+            new Dictionary<string, string> { ["count"] = "integer" });
+        var args = "{\"name\": \"test\", \"num\": \"42\"}";
+        var result = ParameterAliasResolver.InferMissingRequired(args, schema);
+
+        Assert.Equal(args, result);
     }
 }

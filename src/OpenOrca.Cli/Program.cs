@@ -259,6 +259,14 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
             argsJson = resolved;
             argsElement = JsonDocument.Parse(argsJson).RootElement;
         }
+
+        var inferred = ParameterAliasResolver.InferMissingRequired(argsJson, schema, programLogger);
+        if (inferred != argsJson)
+        {
+            programLogger.LogInformation("Inferred missing required arg for {Tool}: {From} → {To}", toolName, argsJson, inferred);
+            argsJson = inferred;
+            argsElement = JsonDocument.Parse(argsJson).RootElement;
+        }
     }
 
     // Snapshot file before modification (checkpoint)
@@ -434,6 +442,14 @@ async Task<string> ExecuteToolStreamingAsync(string toolName, string argsJson, A
         if (resolved != argsJson)
         {
             argsJson = resolved;
+            argsElement = JsonDocument.Parse(argsJson).RootElement;
+        }
+
+        var inferred = ParameterAliasResolver.InferMissingRequired(argsJson, schema, programLogger);
+        if (inferred != argsJson)
+        {
+            programLogger.LogInformation("Inferred missing required arg for {Tool}: {From} → {To}", toolName, argsJson, inferred);
+            argsJson = inferred;
             argsElement = JsonDocument.Parse(argsJson).RootElement;
         }
     }

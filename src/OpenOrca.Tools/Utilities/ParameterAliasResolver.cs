@@ -27,6 +27,10 @@ public static class ParameterAliasResolver
         // task aliases
         ["instructions"] = "task",
         ["prompt"] = "task",
+        ["objective"] = "task",
+        ["goal"] = "task",
+        ["description"] = "task",
+        ["purpose"] = "task",
 
         // pattern aliases
         ["search"] = "pattern",
@@ -95,6 +99,101 @@ public static class ParameterAliasResolver
                         var canonical = AliasMap[prop.Name];
                         logger?.LogDebug("Resolved parameter alias: {Alias} → {Canonical}", prop.Name, canonical);
                         writer.WritePropertyName(canonical);
+                        prop.Value.WriteTo(writer);
+                    }
+                    else
+                    {
+                        prop.WriteTo(writer);
+                    }
+                }
+                writer.WriteEndObject();
+            }
+
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+    }
+
+    /// <summary>
+    /// Infers missing required string parameters from unrecognized string arguments.
+    /// If exactly one required string arg is missing and exactly one unrecognized
+    /// string arg is present, remaps the unrecognized arg to the missing required name.
+    /// Returns original JSON unchanged if inference is ambiguous or not applicable.
+    /// </summary>
+    public static string InferMissingRequired(string argsJson, JsonElement schema, ILogger? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(argsJson) || argsJson == "{}")
+            return argsJson;
+
+        if (!schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+            return argsJson;
+
+        if (!schema.TryGetProperty("required", out var requiredArr) ||
+            requiredArr.ValueKind != JsonValueKind.Array)
+            return argsJson;
+
+        JsonDocument? doc;
+        try
+        {
+            doc = JsonDocument.Parse(argsJson);
+        }
+        catch
+        {
+            return argsJson;
+        }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+
+            // Find required args that are missing from the provided args and have type "string" in schema
+            var missingRequired = new List<string>();
+            foreach (var req in requiredArr.EnumerateArray())
+            {
+                var paramName = req.GetString();
+                if (paramName is not null &&
+                    !root.TryGetProperty(paramName, out _) &&
+                    properties.TryGetProperty(paramName, out var propSchema) &&
+                    propSchema.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "string")
+                {
+                    missingRequired.Add(paramName);
+                }
+            }
+
+            if (missingRequired.Count != 1)
+                return argsJson;
+
+            // Find unrecognized args (not in schema properties) that have string values
+            var unrecognized = new List<string>();
+            foreach (var prop in root.EnumerateObject())
+            {
+                if (!properties.TryGetProperty(prop.Name, out _) &&
+                    prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    unrecognized.Add(prop.Name);
+                }
+            }
+
+            if (unrecognized.Count != 1)
+                return argsJson;
+
+            var missingName = missingRequired[0];
+            var unrecognizedName = unrecognized[0];
+
+            logger?.LogInformation(
+                "Inferred missing required arg: {From} → {To}", unrecognizedName, missingName);
+
+            // Rewrite JSON with the remapped arg
+            using var ms = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms))
+            {
+                writer.WriteStartObject();
+                foreach (var prop in root.EnumerateObject())
+                {
+                    if (prop.Name == unrecognizedName)
+                    {
+                        writer.WritePropertyName(missingName);
                         prop.Value.WriteTo(writer);
                     }
                     else
