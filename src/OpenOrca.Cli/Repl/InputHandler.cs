@@ -12,12 +12,13 @@ public sealed class InputHandler
     private readonly LineEditor? _editor;
     private bool _modeCycled;
     private string _savedInput = string.Empty;
+    private Task<string?>? _pendingSuggestion;
 
     public InputHandler(ReplState state, TerminalPanel panel)
     {
         _state = state;
         _panel = panel;
-        _inputSource = new InjectableInputSource();
+        _inputSource = new InjectableInputSource(Console.Out);
 
         // Create the editor once so history persists across turns
         if (!Console.IsInputRedirected && LineEditor.IsSupported(AnsiConsole.Console))
@@ -42,6 +43,11 @@ public sealed class InputHandler
         }
     }
 
+    /// <summary>
+    /// Store a pending suggestion task to be shown as ghost text on the next input line.
+    /// </summary>
+    public void SetSuggestionTask(Task<string?>? task) => _pendingSuggestion = task;
+
     public async Task<string?> ReadInputAsync(CancellationToken ct)
     {
         // Non-interactive fallback (piped input / CI)
@@ -62,6 +68,7 @@ public sealed class InputHandler
             }
 
             _panel.EnterInput();
+            _inputSource.SetSuggestion(_pendingSuggestion);
 
             string? result;
             try
@@ -70,8 +77,14 @@ public sealed class InputHandler
             }
             catch (OperationCanceledException)
             {
+                _inputSource.ClearSuggestion();
                 _panel.ExitInput();
                 return null;
+            }
+            finally
+            {
+                _inputSource.ClearSuggestion();
+                _pendingSuggestion = null;
             }
 
             _panel.ExitInput();
@@ -229,11 +242,22 @@ internal sealed class CycleVerbosityCommand : LineEditorCommand
 
 /// <summary>
 /// Input source that wraps console input but allows injecting keystrokes
-/// (used to restore text after a mode cycle).
+/// (used to restore text after a mode cycle) and rendering ghost-text suggestions.
 /// </summary>
 internal sealed class InjectableInputSource : IInputSource
 {
     private readonly Queue<ConsoleKeyInfo> _queue = new();
+    private readonly TextWriter _realStdout;
+
+    private Task<string?>? _suggestionTask;
+    private string? _suggestion;
+    private bool _ghostRendered;
+    private bool _userHasTyped;
+
+    public InjectableInputSource(TextWriter realStdout)
+    {
+        _realStdout = realStdout;
+    }
 
     public bool ByPassProcessing => false;
 
@@ -243,12 +267,133 @@ internal sealed class InjectableInputSource : IInputSource
             _queue.Enqueue(new ConsoleKeyInfo(ch, 0, false, false, false));
     }
 
-    public bool IsKeyAvailable() => _queue.Count > 0 || Console.KeyAvailable;
+    /// <summary>
+    /// Called before ReadLine to provide the pending suggestion task.
+    /// </summary>
+    public void SetSuggestion(Task<string?>? task)
+    {
+        _suggestionTask = task;
+        _suggestion = null;
+        _ghostRendered = false;
+        _userHasTyped = false;
+    }
+
+    /// <summary>
+    /// Called after ReadLine to clean up ghost text state.
+    /// </summary>
+    public void ClearSuggestion()
+    {
+        if (_ghostRendered)
+            ClearGhostText();
+
+        _suggestionTask = null;
+        _suggestion = null;
+        _ghostRendered = false;
+        _userHasTyped = false;
+    }
+
+    public bool IsKeyAvailable()
+    {
+        if (_queue.Count > 0 || Console.KeyAvailable)
+            return true;
+
+        // While idle, check if the suggestion task completed
+        if (!_userHasTyped && !_ghostRendered && _suggestionTask is { IsCompleted: true })
+        {
+            try
+            {
+                _suggestion = _suggestionTask.Result;
+            }
+            catch
+            {
+                _suggestion = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_suggestion))
+                RenderGhostText(_suggestion);
+            else
+                _suggestion = null;
+        }
+
+        return false;
+    }
 
     public ConsoleKeyInfo ReadKey()
     {
         if (_queue.TryDequeue(out var key))
             return key;
-        return Console.ReadKey(intercept: true);
+
+        var pressed = Console.ReadKey(intercept: true);
+
+        // First real keystroke handling
+        if (!_userHasTyped)
+        {
+            // Tab with no modifiers + ghost visible → accept suggestion
+            if (pressed.Key == ConsoleKey.Tab &&
+                pressed.Modifiers == 0 &&
+                _ghostRendered &&
+                _suggestion is not null)
+            {
+                ClearGhostText();
+                _ghostRendered = false;
+                _userHasTyped = true;
+
+                // Queue all suggestion chars; return the first one
+                for (var i = 1; i < _suggestion.Length; i++)
+                {
+                    var ch = _suggestion[i];
+                    var consoleKey = char.IsLetter(ch) ? (ConsoleKey)char.ToUpper(ch) : 0;
+                    _queue.Enqueue(new ConsoleKeyInfo(ch, consoleKey, false, false, false));
+                }
+
+                var first = _suggestion[0];
+                var firstKey = char.IsLetter(first) ? (ConsoleKey)char.ToUpper(first) : 0;
+                return new ConsoleKeyInfo(first, firstKey, false, false, false);
+            }
+
+            // Any other key → clear ghost text if visible
+            if (_ghostRendered)
+                ClearGhostText();
+
+            _userHasTyped = true;
+        }
+
+        return pressed;
+    }
+
+    private void RenderGhostText(string text)
+    {
+        try
+        {
+            var available = Console.WindowWidth - Console.CursorLeft - 1;
+            if (available <= 0)
+                return;
+
+            if (text.Length > available)
+                text = text[..available];
+
+            // Save cursor, write dim text, restore cursor
+            _realStdout.Write($"\x1b[s\x1b[90m{text}\x1b[0m\x1b[u");
+            _realStdout.Flush();
+            _ghostRendered = true;
+        }
+        catch
+        {
+            // Terminal doesn't support ANSI — silently skip
+        }
+    }
+
+    private void ClearGhostText()
+    {
+        try
+        {
+            // Save cursor, clear to end of line, restore cursor
+            _realStdout.Write("\x1b[s\x1b[K\x1b[u");
+            _realStdout.Flush();
+        }
+        catch
+        {
+            // Terminal doesn't support ANSI — silently skip
+        }
     }
 }

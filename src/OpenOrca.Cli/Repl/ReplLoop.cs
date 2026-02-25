@@ -268,6 +268,10 @@ public sealed class ReplLoop
                 // Show subtle turn timing
                 AnsiConsole.Markup($"[dim][[{turnStopwatch.Elapsed.TotalSeconds:F1}s]][/]");
 
+                // Pass captured suggestion to input handler for ghost text display
+                if (_state.Mode == InputMode.Normal && _state.SuggestedNextPrompt is not null)
+                    _inputHandler.SetSuggestionTask(Task.FromResult<string?>(_state.SuggestedNextPrompt));
+
                 // Plan mode approval flow
                 if (_state.PlanMode)
                 {
