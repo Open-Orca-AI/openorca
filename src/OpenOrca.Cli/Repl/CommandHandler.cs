@@ -964,26 +964,41 @@ internal sealed class CommandHandler
         {
             _config.LmStudio.Model = args[0];
             AnsiConsole.MarkupLine($"[green]Model set to: {Markup.Escape(args[0])}[/]");
+            return;
+        }
+
+        // Interactive model selection
+        var models = await _configEditor.FetchModelsAsync();
+
+        if (models.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No models found. Is LM Studio running?[/]");
+            return;
+        }
+
+        // Mark current model in the list
+        var current = _config.LmStudio.Model;
+        var choices = models.Select(m =>
+            m.Equals(current, StringComparison.OrdinalIgnoreCase) ? $"{m} (current)" : m).ToList();
+        choices.Insert(0, "(auto - let LM Studio decide)");
+
+        var selected = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[bold]Select model:[/]")
+                .HighlightStyle(Style.Parse("cyan"))
+                .AddChoices(choices));
+
+        if (selected.StartsWith("(auto"))
+        {
+            _config.LmStudio.Model = null;
+            AnsiConsole.MarkupLine("[green]Model set to: (auto)[/]");
         }
         else
         {
-            var discovery = new Core.Client.ModelDiscovery(_config, _logger as ILogger<Core.Client.ModelDiscovery>
-                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<Core.Client.ModelDiscovery>.Instance);
-            var models = await discovery.GetAvailableModelsAsync(ct);
-
-            if (models.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[yellow]No models found. Is LM Studio running?[/]");
-            }
-            else
-            {
-                AnsiConsole.MarkupLine("[bold]Available models:[/]");
-                foreach (var m in models)
-                    AnsiConsole.MarkupLine($"  [cyan]{Markup.Escape(m)}[/]");
-
-                if (_config.LmStudio.Model is not null)
-                    AnsiConsole.MarkupLine($"\n[grey]Current: {Markup.Escape(_config.LmStudio.Model)}[/]");
-            }
+            // Strip " (current)" suffix if present
+            var model = selected.EndsWith(" (current)") ? selected[..^" (current)".Length] : selected;
+            _config.LmStudio.Model = model;
+            AnsiConsole.MarkupLine($"[green]Model set to: {Markup.Escape(model)}[/]");
         }
     }
 

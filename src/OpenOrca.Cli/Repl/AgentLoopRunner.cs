@@ -28,6 +28,7 @@ internal sealed class AgentLoopRunner
     private readonly ToolCallExecutor _toolCallExecutor;
     private readonly CommandHandler _commandHandler;
     private readonly ReplState _state;
+    private readonly TerminalPanel _panel;
     private readonly ILogger _logger;
 
     /// <summary>
@@ -53,6 +54,7 @@ internal sealed class AgentLoopRunner
         ToolCallExecutor toolCallExecutor,
         CommandHandler commandHandler,
         ReplState state,
+        TerminalPanel panel,
         ILogger logger)
     {
         _chatClient = chatClient;
@@ -62,6 +64,7 @@ internal sealed class AgentLoopRunner
         _toolCallExecutor = toolCallExecutor;
         _commandHandler = commandHandler;
         _state = state;
+        _panel = panel;
         _logger = logger;
     }
 
@@ -208,6 +211,7 @@ internal sealed class AgentLoopRunner
                             // Cycle through all 5 levels: 0→1→2→3→4→0
                             _state.Verbosity = (_state.Verbosity + 1) % 5;
                             thinkingVisible = _state.ShowThinking;
+                            _panel.Redraw();
                             // Only change display when thinking visibility actually flips
                             if (thinkingVisible != wasThinkingVisible)
                             {
