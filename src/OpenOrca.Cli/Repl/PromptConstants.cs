@@ -91,7 +91,7 @@ internal static class PromptConstants
 
         Examples:
         <tool_call>
-        {"name": "mkdir", "arguments": {"path": "my_project"}}
+        {"name": "list_directory", "arguments": {"path": "."}}
         </tool_call>
 
         <tool_call>

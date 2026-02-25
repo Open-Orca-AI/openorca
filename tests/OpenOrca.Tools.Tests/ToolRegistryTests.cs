@@ -17,13 +17,13 @@ public class ToolRegistryTests
     }
 
     [Fact]
-    public void DiscoverTools_FindsExpected35Tools()
+    public void DiscoverTools_FindsExpected39Tools()
     {
         var registry = new ToolRegistry(NullLogger<ToolRegistry>.Instance);
         registry.DiscoverTools(typeof(ToolRegistry).Assembly);
 
         var tools = registry.GetAll();
-        Assert.Equal(35, tools.Count);
+        Assert.Equal(39, tools.Count);
     }
 
     [Fact]

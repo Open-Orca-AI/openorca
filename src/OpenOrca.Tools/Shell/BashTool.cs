@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -6,18 +5,18 @@ using OpenOrca.Tools.Abstractions;
 
 namespace OpenOrca.Tools.Shell;
 
-public sealed class BashTool : IOrcaTool
+public sealed class BashTool : IOrcaTool, IStreamingOrcaTool
 {
     public ILogger? Logger { get; set; }
 
     /// <summary>
-    /// Default idle timeout in seconds. Set from config (Shell.IdleTimeoutSeconds).
-    /// 0 = disabled. Can be overridden per-call via idle_timeout_seconds parameter.
+    /// Default timeout in seconds. Set from config (Shell.IdleTimeoutSeconds).
+    /// Used as the default for timeout_seconds when not specified per-call.
     /// </summary>
     public int IdleTimeoutSeconds { get; set; } = 15;
 
     public string Name => "bash";
-    public string Description => "Execute a shell command and return its output. Uses cmd.exe on Windows and /bin/bash on Unix. Supports working directory and timeout (default 120s). Output is truncated at 30,000 chars. If no stdout is produced within the idle timeout (default 15s), the command is aborted with a suggestion to use start_background_process. Set idle_timeout_seconds to 0 to disable for slow-starting commands. Do NOT use for servers, watchers, REPLs, or interactive programs — use start_background_process instead.";
+    public string Description => "Execute a shell command and return its output. Uses cmd.exe on Windows and /bin/bash on Unix. Output streams to the user in real-time. Waits up to timeout_seconds (default 15s) for completion — if the command is still running, returns the process ID so you can check on it with get_process_output or stop it with stop_process. Output is truncated at 30,000 chars.";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.Dangerous;
 
     public JsonElement ParameterSchema => JsonDocument.Parse("""
@@ -34,11 +33,7 @@ public sealed class BashTool : IOrcaTool
             },
             "timeout_seconds": {
                 "type": "integer",
-                "description": "Timeout in seconds. Defaults to 120."
-            },
-            "idle_timeout_seconds": {
-                "type": "integer",
-                "description": "Abort if no stdout for this many seconds (default 15). Set to 0 to disable for slow-starting commands."
+                "description": "Max seconds to wait for the command to complete (default 15). If exceeded, the process continues in background and its ID is returned."
             },
             "description": {
                 "type": "string",
@@ -49,176 +44,147 @@ public sealed class BashTool : IOrcaTool
     }
     """).RootElement;
 
-    public async Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    public Task<ToolResult> ExecuteAsync(JsonElement args, CancellationToken ct)
+    {
+        return ExecuteStreamingAsync(args, _ => { }, ct);
+    }
+
+    public async Task<ToolResult> ExecuteStreamingAsync(
+        JsonElement args, Action<string> onOutput, CancellationToken ct)
     {
         var command = args.GetProperty("command").GetString()!;
         var workDir = args.TryGetProperty("working_directory", out var wd) ? wd.GetString() ?? "." : ".";
-        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? GetIntTolerant(ts, 120) : 120;
-        var idleTimeoutSec = args.TryGetProperty("idle_timeout_seconds", out var its) ? GetIntTolerant(its, IdleTimeoutSeconds) : IdleTimeoutSeconds;
+        var timeoutSec = args.TryGetProperty("timeout_seconds", out var ts) ? GetIntTolerant(ts, IdleTimeoutSeconds) : IdleTimeoutSeconds;
 
         workDir = Path.GetFullPath(workDir);
-        Logger?.LogDebug("Executing bash: {Command} in {WorkDir} (timeout: {Timeout}s, idle: {Idle}s)",
-            command.Length > 200 ? command[..200] + "..." : command, workDir, timeoutSec, idleTimeoutSec);
+        Logger?.LogDebug("Executing bash: {Command} in {WorkDir} (timeout: {Timeout}s)",
+            command.Length > 200 ? command[..200] + "..." : command, workDir, timeoutSec);
 
         if (!Directory.Exists(workDir))
             return ToolResult.Error($"Working directory not found: {workDir}");
 
         try
         {
-            var isWindows = OperatingSystem.IsWindows();
-            var psi = new ProcessStartInfo
+            var managed = BackgroundProcessManager.Start(command, workDir);
+            // Use array to allow mutation from async methods (ref not allowed in async)
+            var cursor = new int[] { 0 };
+
+            // Poll for new output lines, streaming to user in real-time
+            var exited = await PollOutputAsync(managed, cursor, onOutput,
+                TimeSpan.FromSeconds(timeoutSec), ct);
+
+            if (ct.IsCancellationRequested)
+                return ToolResult.Error("Command cancelled by user.");
+
+            if (exited)
             {
-                FileName = isWindows ? "cmd.exe" : "/bin/bash",
-                WorkingDirectory = workDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                // Small delay to let final output flush from async readers
+                await Task.Delay(150, CancellationToken.None);
+                FlushNewLines(managed, cursor, onOutput);
 
-            using var process = Process.Start(psi)!;
-
-            // Write command via stdin to avoid shell argument escaping issues
-            if (isWindows)
-                await process.StandardInput.WriteLineAsync("@echo off");
-            await process.StandardInput.WriteLineAsync(command);
-            process.StandardInput.Close();
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
-
-            var stdoutBuilder = new StringBuilder();
-            var stderrBuilder = new StringBuilder();
-            var idleTimedOut = false;
-
-            // Read stderr in a parallel task (does NOT reset idle timer)
-            var stderrTask = Task.Run(async () =>
-            {
-                var buffer = new char[4096];
-                try
-                {
-                    int read;
-                    while ((read = await process.StandardError.ReadAsync(buffer, timeoutCts.Token)) > 0)
-                        stderrBuilder.Append(buffer, 0, read);
-                }
-                catch (OperationCanceledException) { }
-            }, timeoutCts.Token);
-
-            // Read stdout with idle timeout tracking
-            try
-            {
-                var buffer = new char[4096];
-                var useIdleTimeout = idleTimeoutSec > 0;
-
-                while (true)
-                {
-                    CancellationToken readToken;
-                    CancellationTokenSource? idleCts = null;
-
-                    if (useIdleTimeout)
-                    {
-                        idleCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token);
-                        idleCts.CancelAfter(TimeSpan.FromSeconds(idleTimeoutSec));
-                        readToken = idleCts.Token;
-                    }
-                    else
-                    {
-                        readToken = timeoutCts.Token;
-                    }
-
-                    int read;
-                    try
-                    {
-                        read = await process.StandardOutput.ReadAsync(buffer, readToken);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        if (ct.IsCancellationRequested)
-                            throw; // user cancellation — rethrow
-
-                        if (timeoutCts.IsCancellationRequested)
-                            throw; // total timeout — rethrow
-
-                        // Idle timeout fired
-                        idleTimedOut = true;
-                        break;
-                    }
-                    finally
-                    {
-                        idleCts?.Dispose();
-                    }
-
-                    if (read == 0)
-                        break; // EOF
-
-                    stdoutBuilder.Append(buffer, 0, read);
-                }
+                return FormatCompletedResult(managed, cursor[0]);
             }
-            catch (OperationCanceledException)
+            else
             {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-
-                if (ct.IsCancellationRequested)
-                    return ToolResult.Error("Command cancelled by user.");
-
-                return ToolResult.Error($"Command timed out after {timeoutSec} seconds. " +
-                    "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.");
+                return FormatTimeoutResult(managed, cursor[0], timeoutSec);
             }
-
-            if (idleTimedOut)
-            {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-
-                var partial = stdoutBuilder.ToString();
-                var msg = $"Command idle timeout: no stdout for {idleTimeoutSec} seconds.\n" +
-                    "This typically means the command is waiting for input or running a long-lived process.\n" +
-                    "Use start_background_process for servers, watchers, or long-running commands.\n" +
-                    "Set idle_timeout_seconds to 0 to disable for slow-starting commands.";
-
-                if (partial.Length > 0)
-                    msg += $"\n\nPartial stdout before timeout:\n{partial}";
-
-                return ToolResult.Error(msg);
-            }
-
-            // Wait for process exit after stdout EOF
-            try
-            {
-                await process.WaitForExitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-
-                if (ct.IsCancellationRequested)
-                    return ToolResult.Error("Command cancelled by user.");
-
-                return ToolResult.Error($"Command timed out after {timeoutSec} seconds. " +
-                    "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.");
-            }
-
-            // Wait for stderr to finish
-            try { await stderrTask; } catch (OperationCanceledException) { }
-
-            var output = stdoutBuilder.ToString();
-            var error = stderrBuilder.ToString();
-
-            const int maxLen = 30000;
-            var combined = string.IsNullOrEmpty(error) ? output : $"{output}\n--- stderr ---\n{error}";
-
-            if (combined.Length > maxLen)
-                combined = combined[..maxLen] + $"\n... ({combined.Length - maxLen} chars truncated)";
-
-            var header = $"Working directory: {workDir}\nExit code: {process.ExitCode}\n\n";
-            return process.ExitCode == 0
-                ? ToolResult.Success(header + combined)
-                : ToolResult.Error(header + combined);
+        }
+        catch (OperationCanceledException)
+        {
+            return ToolResult.Error("Command cancelled by user.");
         }
         catch (Exception ex)
         {
             return ToolResult.Error($"Failed to execute command: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Poll for new output lines until the process exits or the timeout elapses.
+    /// Returns true if the process exited within the timeout.
+    /// </summary>
+    private async Task<bool> PollOutputAsync(
+        ManagedProcess managed, int[] cursor, Action<string> onOutput,
+        TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            FlushNewLines(managed, cursor, onOutput);
+
+            if (managed.HasExited)
+                return true;
+
+            // Wait a short interval, but also check if process exits sooner
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                break;
+
+            var waitTime = TimeSpan.FromMilliseconds(Math.Min(100, remaining.TotalMilliseconds));
+            var exitedDuringWait = await managed.WaitForExitAsync(waitTime, ct);
+            if (exitedDuringWait)
+            {
+                FlushNewLines(managed, cursor, onOutput);
+                return true;
+            }
+        }
+
+        // Final flush before returning timeout
+        FlushNewLines(managed, cursor, onOutput);
+        return false;
+    }
+
+    private static void FlushNewLines(ManagedProcess managed, int[] cursor, Action<string> onOutput)
+    {
+        var (lines, newCursor) = managed.GetNewLines(cursor[0]);
+        cursor[0] = newCursor;
+        foreach (var line in lines)
+            onOutput(line);
+    }
+
+    private static ToolResult FormatCompletedResult(ManagedProcess managed, int cursor)
+    {
+        var lines = managed.GetTailLines(cursor);
+        var output = string.Join("\n", lines);
+
+        const int maxLen = 30000;
+        if (output.Length > maxLen)
+            output = output[..maxLen] + $"\n... ({output.Length - maxLen} chars truncated)";
+
+        var exitCode = managed.ExitCode ?? 0;
+        var header = $"Working directory: {managed.WorkingDirectory}\nExit code: {exitCode}\n\n";
+        return exitCode == 0
+            ? ToolResult.Success(header + output)
+            : ToolResult.Error(header + output);
+    }
+
+    private static ToolResult FormatTimeoutResult(ManagedProcess managed, int cursor, int timeoutSec)
+    {
+        var lines = managed.GetTailLines(cursor);
+        var output = string.Join("\n", lines);
+
+        const int maxLen = 30000;
+        if (output.Length > maxLen)
+            output = output[..maxLen] + $"\n... ({output.Length - maxLen} chars truncated)";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Command is still running in the background (process ID: \"{managed.Id}\").");
+        sb.AppendLine($"Working directory: {managed.WorkingDirectory}");
+        sb.AppendLine($"Elapsed: {timeoutSec}s");
+        sb.AppendLine();
+        if (output.Length > 0)
+        {
+            sb.AppendLine("--- Output so far ---");
+            sb.AppendLine(output);
+            sb.AppendLine();
+        }
+        sb.AppendLine($"The process is still running. Use get_process_output with process_id \"{managed.Id}\" to check for new output.");
+        sb.Append($"Use stop_process with process_id \"{managed.Id}\" to terminate it.");
+
+        return ToolResult.Success(sb.ToString());
     }
 
     /// <summary>

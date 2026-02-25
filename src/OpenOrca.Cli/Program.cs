@@ -215,7 +215,9 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
     if (tool is null)
     {
         programLogger.LogWarning("Unknown tool requested: {Tool}", toolName);
-        return $"Unknown tool: {toolName}. This tool is not available. Use only the tools listed in your system prompt.";
+        var suggestion = toolRegistry.FindClosestMatch(toolName);
+        var hint = suggestion is not null ? $" Did you mean '{suggestion}'?" : "";
+        return $"Unknown tool: {toolName}.{hint} Use only the tools listed in your system prompt.";
     }
 
     programLogger.LogDebug("Tool resolved: {Tool} (risk: {Risk})", toolName, tool.RiskLevel);
@@ -392,6 +394,109 @@ async Task<string> ExecuteToolAsync(string toolName, string argsJson, Cancellati
     }
 }
 
+// Streaming tool executor — delegates to IStreamingOrcaTool.ExecuteStreamingAsync
+async Task<string> ExecuteToolStreamingAsync(string toolName, string argsJson, Action<string> onOutput, CancellationToken ct)
+{
+    programLogger.LogDebug("ExecuteToolStreamingAsync called: {Tool}", toolName);
+
+    var tool = toolRegistry.Resolve(toolName);
+    if (tool is null)
+    {
+        var suggestion = toolRegistry.FindClosestMatch(toolName);
+        var hint = suggestion is not null ? $" Did you mean '{suggestion}'?" : "";
+        return $"Unknown tool: {toolName}.{hint} This tool is not available.";
+    }
+
+    // Permission check
+    var approved = await permissionManager.CheckPermissionAsync(toolName, tool.RiskLevel.ToString(), argsJson);
+    if (!approved)
+        return "Permission denied by user.";
+
+    // Pre-tool hook
+    if (!await hookRunner.RunPreHookAsync(toolName, argsJson, ct))
+        return "Tool blocked by hook.";
+
+    JsonElement argsElement;
+    try
+    {
+        argsElement = JsonDocument.Parse(argsJson).RootElement;
+    }
+    catch
+    {
+        argsElement = JsonDocument.Parse("{}").RootElement;
+    }
+
+    // Resolve parameter aliases
+    var schema = tool.ParameterSchema;
+    if (schema.TryGetProperty("properties", out _))
+    {
+        var resolved = ParameterAliasResolver.ResolveAliases(argsJson, schema, programLogger);
+        if (resolved != argsJson)
+        {
+            argsJson = resolved;
+            argsElement = JsonDocument.Parse(argsJson).RootElement;
+        }
+    }
+
+    // Validate required arguments
+    if (schema.TryGetProperty("required", out var requiredArr) && requiredArr.ValueKind == JsonValueKind.Array)
+    {
+        var missing = new List<string>();
+        foreach (var req in requiredArr.EnumerateArray())
+        {
+            var paramName = req.GetString();
+            if (paramName is not null && !argsElement.TryGetProperty(paramName, out _))
+                missing.Add(paramName);
+        }
+        if (missing.Count > 0)
+            return $"ERROR: {toolName} was called with missing required arguments: {string.Join(", ", missing)}.";
+    }
+
+    var toolStopwatch = System.Diagnostics.Stopwatch.StartNew();
+    try
+    {
+        ToolResult result;
+        if (tool is IStreamingOrcaTool streaming)
+            result = await streaming.ExecuteStreamingAsync(argsElement, onOutput, ct);
+        else
+            result = await tool.ExecuteAsync(argsElement, ct);
+
+        toolStopwatch.Stop();
+
+        _ = hookRunner.RunPostHookAsync(toolName, argsJson, result.Content, result.IsError, ct);
+
+        replState.ToolCallHistory.Add(new OpenOrca.Cli.Serialization.ToolCallRecord
+        {
+            Name = toolName,
+            Arguments = argsJson,
+            Result = result.Content.Length > 1000 ? result.Content[..1000] + "..." : result.Content,
+            IsError = result.IsError,
+            DurationMs = toolStopwatch.ElapsedMilliseconds
+        });
+
+        if (result.IsError)
+            return $"ERROR: {result.Content}";
+
+        return result.Content;
+    }
+    catch (Exception ex)
+    {
+        toolStopwatch.Stop();
+        _ = hookRunner.RunPostHookAsync(toolName, argsJson, ex.Message, true, ct);
+
+        replState.ToolCallHistory.Add(new OpenOrca.Cli.Serialization.ToolCallRecord
+        {
+            Name = toolName,
+            Arguments = argsJson,
+            Result = ex.Message,
+            IsError = true,
+            DurationMs = toolStopwatch.ElapsedMilliseconds
+        });
+
+        return $"ERROR executing {toolName}: {ex.Message}";
+    }
+}
+
 // Set up agent orchestrator
 var orchestrator = host.Services.GetRequiredService<AgentOrchestrator>();
 var aiTools = toolRegistry.GenerateAITools();
@@ -454,7 +559,7 @@ conversationManager.CreateNew();
 
 // Wire up REPL with tools
 var repl = host.Services.GetRequiredService<ReplLoop>();
-repl.SetTools(aiTools, ExecuteToolAsync);
+repl.SetTools(aiTools, ExecuteToolAsync, ExecuteToolStreamingAsync);
 
 // Restore session for --continue / --resume
 var sessionManager = host.Services.GetRequiredService<SessionManager>();

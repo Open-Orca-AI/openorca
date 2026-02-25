@@ -47,14 +47,14 @@ public class ToolCallRendererTests
 
         // Truncation hint
         Assert.Contains("5 more lines", output);
-        Assert.Contains("Ctrl+O to expand", output);
+        Assert.Contains("Ctrl+O to increase verbosity", output);
     }
 
     [Fact]
     public void RenderToolResult_Success_ManyLines_ShowThinking_ShowsAll()
     {
         var (renderer, state, console) = Create();
-        state.ShowThinking = true;
+        state.Verbosity = 2; // ShowFullToolOutput
         var lines = Enumerable.Range(1, 12).Select(i => $"line{i}");
         var result = string.Join("\n", lines);
 

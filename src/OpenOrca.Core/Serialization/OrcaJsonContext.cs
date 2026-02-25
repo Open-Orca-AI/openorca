@@ -20,4 +20,6 @@ namespace OpenOrca.Core.Serialization;
 [JsonSerializable(typeof(JsonElement))]
 [JsonSerializable(typeof(McpServerConfig))]
 [JsonSerializable(typeof(Dictionary<string, McpServerConfig>))]
+[JsonSerializable(typeof(CheckpointEntry))]
+[JsonSerializable(typeof(List<CheckpointEntry>))]
 public partial class OrcaJsonContext : JsonSerializerContext;

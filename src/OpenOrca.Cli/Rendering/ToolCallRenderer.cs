@@ -25,6 +25,7 @@ public sealed class ToolCallRenderer
     public void RenderToolCall(string toolName, string arguments)
     {
         if (Suppressed) return;
+        if (!_state.ShowToolCalls) return; // Level 0: suppress tool call rendering
 
         var emoji = GetToolEmoji(toolName);
         var reason = ExtractReason(arguments);
@@ -69,9 +70,21 @@ public sealed class ToolCallRenderer
         if (string.IsNullOrWhiteSpace(result))
             return;
 
+        var isPrint = toolName == "print";
+
+        // At level 0, only print tool output is shown
+        if (_state.ShowPrintOnly && !isPrint) return;
+
+        if (isPrint)
+        {
+            // Print tool: always render prominently (not dim)
+            _console.MarkupLine($"  [white]{Markup.Escape(result)}[/]");
+            return;
+        }
+
         var lines = result.Split('\n');
         var maxLines = CliConstants.ToolOutputPreviewLines;
-        var expanded = _state.ShowThinking;
+        var expanded = _state.ShowFullToolOutput;
 
         if (isError)
         {
@@ -106,7 +119,7 @@ public sealed class ToolCallRenderer
         if (!expanded && lines.Length > maxLines)
         {
             var remaining = lines.Length - maxLines;
-            _console.MarkupLine($"        [dim]⋯ {remaining} more line{(remaining == 1 ? "" : "s")} (Ctrl+O to expand)[/]");
+            _console.MarkupLine($"        [dim]⋯ {remaining} more line{(remaining == 1 ? "" : "s")} (Ctrl+O to increase verbosity)[/]");
         }
     }
 

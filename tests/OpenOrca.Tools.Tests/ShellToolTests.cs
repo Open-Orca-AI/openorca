@@ -56,17 +56,6 @@ public class ShellToolTests
     }
 
     [Fact]
-    public async Task BashTool_Timeout_RespectsTimeout()
-    {
-        var tool = new BashTool();
-        var command = OperatingSystem.IsWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
-        var args = MakeArgs($"{{\"command\": \"{command}\", \"timeout_seconds\": 1}}");
-        var result = await tool.ExecuteAsync(args, CancellationToken.None);
-
-        Assert.Contains("timed out", result.Content, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task BashTool_MultilineOutput_ReturnsFull()
     {
         var tool = new BashTool();
@@ -82,92 +71,86 @@ public class ShellToolTests
         Assert.Contains("line3", result.Content);
     }
 
-    // ── BashTool Idle Timeout ──
+    // ── BashTool Streaming + Background ──
 
     [Fact]
-    public async Task BashTool_IdleTimeout_FiresWhenNoStdout()
+    public async Task BashTool_SlowCommand_ReturnsProcessId()
     {
         var tool = new BashTool { IdleTimeoutSeconds = 2 };
-        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1 > nul" : "sleep 30";
+        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1" : "sleep 30";
         var args = MakeArgs($"{{\"command\": \"{command}\"}}");
 
         var sw = Stopwatch.StartNew();
         var result = await tool.ExecuteAsync(args, CancellationToken.None);
         sw.Stop();
 
-        Assert.True(result.IsError);
-        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("start_background_process", result.Content, StringComparison.OrdinalIgnoreCase);
-        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Should abort quickly, took {sw.Elapsed.TotalSeconds:F1}s");
+        Assert.False(result.IsError, $"Expected success with process ID but got error: {result.Content}");
+        Assert.Contains("still running", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("process ID", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_process_output", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Should return within timeout, took {sw.Elapsed.TotalSeconds:F1}s");
     }
 
     [Fact]
-    public async Task BashTool_IdleTimeout_ResetsOnActivity()
-    {
-        var tool = new BashTool { IdleTimeoutSeconds = 3 };
-        // Echo, sleep (less than idle timeout), echo again — should succeed
-        var command = OperatingSystem.IsWindows()
-            ? "echo first && ping -n 3 127.0.0.1 > nul && echo second"
-            : "echo first; sleep 2; echo second";
-        var args = MakeArgs($"{{\"command\": \"{command}\"}}");
-
-        var result = await tool.ExecuteAsync(args, CancellationToken.None);
-
-        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
-        Assert.Contains("first", result.Content);
-        Assert.Contains("second", result.Content);
-    }
-
-    [Fact]
-    public async Task BashTool_IdleTimeout_DisabledWhenZero()
-    {
-        var tool = new BashTool { IdleTimeoutSeconds = 0 };
-        // Sleep 3s then echo — with idle disabled, should succeed
-        var command = OperatingSystem.IsWindows()
-            ? "ping -n 4 127.0.0.1 > nul && echo done"
-            : "sleep 3; echo done";
-        var args = MakeArgs($"{{\"command\": \"{command}\", \"timeout_seconds\": 10}}");
-
-        var result = await tool.ExecuteAsync(args, CancellationToken.None);
-
-        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
-        Assert.Contains("done", result.Content);
-    }
-
-    [Fact]
-    public async Task BashTool_IdleTimeout_PerCallOverride()
+    public async Task BashTool_TimeoutOverride_RespectsParameter()
     {
         var tool = new BashTool { IdleTimeoutSeconds = 60 };
-        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1 > nul" : "sleep 30";
-        // Override to 2s via parameter
-        var args = MakeArgs($"{{\"command\": \"{command}\", \"idle_timeout_seconds\": 2}}");
+        var command = OperatingSystem.IsWindows() ? "ping -n 30 127.0.0.1" : "sleep 30";
+        var args = MakeArgs($"{{\"command\": \"{command}\", \"timeout_seconds\": 2}}");
 
         var sw = Stopwatch.StartNew();
         var result = await tool.ExecuteAsync(args, CancellationToken.None);
         sw.Stop();
 
-        Assert.True(result.IsError);
-        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.IsError, $"Expected success with process ID but got error: {result.Content}");
+        Assert.Contains("still running", result.Content, StringComparison.OrdinalIgnoreCase);
         Assert.True(sw.Elapsed.TotalSeconds < 15, $"Per-call override should fire quickly, took {sw.Elapsed.TotalSeconds:F1}s");
     }
 
     [Fact]
-    public async Task BashTool_IdleTimeout_StderrDoesNotReset()
+    public async Task BashTool_Streaming_CallsCallbackPerLine()
     {
-        var tool = new BashTool { IdleTimeoutSeconds = 2 };
-        // Write to stderr only, then sleep — idle timer should still fire
+        var tool = new BashTool();
         var command = OperatingSystem.IsWindows()
-            ? "echo stderr_only 1>&2 && ping -n 30 127.0.0.1 > nul"
-            : "echo stderr_only >&2; sleep 30";
+            ? "echo alpha && echo beta && echo gamma"
+            : "echo alpha; echo beta; echo gamma";
         var args = MakeArgs($"{{\"command\": \"{command}\"}}");
 
-        var sw = Stopwatch.StartNew();
-        var result = await tool.ExecuteAsync(args, CancellationToken.None);
-        sw.Stop();
+        var streamedLines = new List<string>();
+        var result = await tool.ExecuteStreamingAsync(args, line => streamedLines.Add(line), CancellationToken.None);
 
-        Assert.True(result.IsError);
-        Assert.Contains("idle timeout", result.Content, StringComparison.OrdinalIgnoreCase);
-        Assert.True(sw.Elapsed.TotalSeconds < 15, $"Stderr should not reset idle, took {sw.Elapsed.TotalSeconds:F1}s");
+        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
+        Assert.True(streamedLines.Count >= 3, $"Expected at least 3 streamed lines but got {streamedLines.Count}: [{string.Join(", ", streamedLines)}]");
+        Assert.Contains(streamedLines, l => l.Contains("alpha"));
+        Assert.Contains(streamedLines, l => l.Contains("beta"));
+        Assert.Contains(streamedLines, l => l.Contains("gamma"));
+    }
+
+    [Fact]
+    public async Task BashTool_CompletedWithinTimeout_ReturnsFullOutput()
+    {
+        var tool = new BashTool { IdleTimeoutSeconds = 30 };
+        var command = OperatingSystem.IsWindows() ? "echo completed_ok" : "echo completed_ok";
+        var args = MakeArgs($"{{\"command\": \"{command}\"}}");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError, $"Expected success but got: {result.Content}");
+        Assert.Contains("completed_ok", result.Content);
+        Assert.Contains("Exit code: 0", result.Content);
+        Assert.DoesNotContain("still running", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task BashTool_Timeout_RespectsTimeout()
+    {
+        var tool = new BashTool();
+        var command = OperatingSystem.IsWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
+        var args = MakeArgs($"{{\"command\": \"{command}\", \"timeout_seconds\": 1}}");
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        // Now returns process ID instead of "timed out" error
+        Assert.Contains("still running", result.Content, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── CdTool ──
@@ -251,6 +234,56 @@ public class ShellToolTests
 
         var lines = managed.GetTailLines(10);
         Assert.Contains(lines, l => l.Contains("bg-test"));
+
+        BackgroundProcessManager.Stop(managed.Id);
+    }
+
+    // ── ManagedProcess.GetNewLines ──
+
+    [Fact]
+    public async Task ManagedProcess_GetNewLines_ReturnsDeltaOnly()
+    {
+        var command = OperatingSystem.IsWindows()
+            ? "echo first && echo second && echo third"
+            : "echo first; echo second; echo third";
+        var managed = BackgroundProcessManager.Start(command, Directory.GetCurrentDirectory());
+
+        await Task.Delay(1500);
+
+        // First call: get all lines
+        var cursor = 0;
+        var (lines1, cursor1) = managed.GetNewLines(cursor);
+        Assert.True(lines1.Count >= 3);
+        Assert.Contains(lines1, l => l.Contains("first"));
+
+        // Second call with updated cursor: should return no new lines (process already done)
+        var (lines2, cursor2) = managed.GetNewLines(cursor1);
+        Assert.Empty(lines2);
+        Assert.Equal(cursor1, cursor2);
+
+        BackgroundProcessManager.Stop(managed.Id);
+    }
+
+    [Fact]
+    public async Task ManagedProcess_WaitForExitAsync_ReturnsTrueOnExit()
+    {
+        var command = OperatingSystem.IsWindows() ? "echo done" : "echo done";
+        var managed = BackgroundProcessManager.Start(command, Directory.GetCurrentDirectory());
+
+        var exited = await managed.WaitForExitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        Assert.True(exited);
+
+        BackgroundProcessManager.Stop(managed.Id);
+    }
+
+    [Fact]
+    public async Task ManagedProcess_WaitForExitAsync_ReturnsFalseOnTimeout()
+    {
+        var command = OperatingSystem.IsWindows() ? "ping -t 127.0.0.1" : "sleep 60";
+        var managed = BackgroundProcessManager.Start(command, Directory.GetCurrentDirectory());
+
+        var exited = await managed.WaitForExitAsync(TimeSpan.FromMilliseconds(200), CancellationToken.None);
+        Assert.False(exited);
 
         BackgroundProcessManager.Stop(managed.Id);
     }

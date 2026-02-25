@@ -19,12 +19,27 @@ public enum InputMode
 /// </summary>
 public sealed class ReplState
 {
-    private volatile bool _showThinking;
+    private volatile int _verbosity = 1;
     private volatile InputMode _mode;
     private int _totalOutputTokens;
     private int _totalTurns;
 
-    public bool ShowThinking { get => _showThinking; set => _showThinking = value; }
+    /// <summary>
+    /// Verbosity level (0-4). Ctrl+O cycles through levels.
+    /// 0 = print only, 1 = tool calls + 7-line preview, 2 = full tool output,
+    /// 3 = thinking preview (7 lines), 4 = full thinking.
+    /// </summary>
+    public int Verbosity { get => _verbosity; set => _verbosity = value; }
+
+    // Derived helpers for readability in rendering code
+    public bool ShowPrintOnly => _verbosity == 0;
+    public bool ShowToolCalls => _verbosity >= 1;
+    public bool ShowFullToolOutput => _verbosity >= 2;
+    public bool ShowThinkingPreview => _verbosity >= 3;
+    public bool ShowFullThinking => _verbosity >= 4;
+
+    /// <summary>Backward compat for existing code referencing ShowThinking.</summary>
+    public bool ShowThinking => _verbosity >= 3;
 
     /// <summary>
     /// Current input mode (Normal, Plan, Ask). Cycled by Shift+Tab.

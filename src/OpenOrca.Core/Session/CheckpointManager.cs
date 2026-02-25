@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using OpenOrca.Core.Configuration;
+using OpenOrca.Core.Serialization;
 
 namespace OpenOrca.Core.Session;
 
@@ -151,7 +152,7 @@ public sealed class CheckpointManager
         try
         {
             var json = await File.ReadAllTextAsync(path);
-            return JsonSerializer.Deserialize<List<CheckpointEntry>>(json) ?? [];
+            return JsonSerializer.Deserialize(json, OrcaJsonContext.Default.ListCheckpointEntry) ?? [];
         }
         catch
         {
@@ -162,7 +163,7 @@ public sealed class CheckpointManager
     private async Task SaveManifestAsync(string sessionId, List<CheckpointEntry> manifest)
     {
         var path = GetManifestPath(sessionId);
-        var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(manifest, OrcaJsonContext.Default.ListCheckpointEntry);
         await File.WriteAllTextAsync(path, json);
     }
 

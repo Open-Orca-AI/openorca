@@ -17,11 +17,18 @@ public sealed class ThinkTagFilter
 
     private State _state = State.Detecting;
     private string _buffer = "";
+    private int _emittedThinkingLines;
 
     /// <summary>
     /// Returns accumulated thinking text (for token counting / Ctrl+O flush).
     /// </summary>
     public string AccumulatedThinking { get; private set; } = "";
+
+    /// <summary>
+    /// Maximum thinking lines to emit visually. Default: int.MaxValue (unlimited).
+    /// Set to 7 for verbosity level 3 (thinking preview).
+    /// </summary>
+    public int MaxThinkingLines { get; set; } = int.MaxValue;
 
     /// <summary>
     /// Whether the filter has transitioned to the Response phase (response tokens are flowing).
@@ -83,29 +90,51 @@ public sealed class ThinkTagFilter
     /// <summary>
     /// Scan the buffer for &lt;/think&gt;. If found, transition to Response and
     /// return any text after the close tag as response text.
+    /// Respects MaxThinkingLines — once exceeded, continues accumulating but stops emitting.
     /// </summary>
     private (string, string) DrainInsideThink()
     {
         var closeIdx = _buffer.IndexOf(CloseTag, StringComparison.OrdinalIgnoreCase);
         if (closeIdx >= 0)
         {
-            // Everything before close tag is thinking
             var thinkPart = _buffer[..closeIdx];
-            // Everything after close tag is response
             var responsePart = _buffer[(closeIdx + CloseTag.Length)..];
 
             AccumulatedThinking += thinkPart;
             _buffer = "";
             _state = State.Response;
 
-            return (thinkPart, responsePart);
+            return (TruncateThinking(thinkPart), responsePart);
         }
 
-        // No close tag yet — all buffered content is thinking
         var thinking = _buffer;
         AccumulatedThinking += thinking;
         _buffer = "";
-        return (thinking, "");
+        return (TruncateThinking(thinking), "");
+    }
+
+    /// <summary>
+    /// Return only the portion of thinking text that fits within MaxThinkingLines.
+    /// Once the limit is reached, returns empty string for subsequent calls.
+    /// </summary>
+    private string TruncateThinking(string text)
+    {
+        if (_emittedThinkingLines >= MaxThinkingLines)
+            return "";
+
+        var lines = text.Split('\n');
+        var remaining = MaxThinkingLines - _emittedThinkingLines;
+
+        if (lines.Length <= remaining)
+        {
+            _emittedThinkingLines += lines.Length;
+            return text;
+        }
+
+        // Take only the lines that fit
+        _emittedThinkingLines = MaxThinkingLines;
+        var truncated = string.Join('\n', lines.Take(remaining));
+        return truncated + "\n⋯ (thinking truncated, Ctrl+O to expand)";
     }
 
     private (string, string) ProcessResponse(string token)
