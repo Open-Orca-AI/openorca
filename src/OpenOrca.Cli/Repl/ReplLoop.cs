@@ -90,7 +90,7 @@ public sealed class ReplLoop
 
         _agentLoopRunner = new AgentLoopRunner(
             chatClient, config, streamingRenderer, toolCallParser,
-            _toolCallExecutor, _commandHandler, _state, logger);
+            _toolCallExecutor, _commandHandler, _state, panel, logger);
 
         _context7Helper = new Context7Helper(toolRegistry);
         _docsPreprocessor = new DocsPreprocessor(_context7Helper);

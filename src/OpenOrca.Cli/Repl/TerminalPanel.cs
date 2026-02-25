@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace OpenOrca.Cli.Repl;
 
 /// <summary>
@@ -7,10 +9,14 @@ namespace OpenOrca.Cli.Repl;
 ///   Row H-3: ❯ input here   (prompt line)
 ///   Row H-2: ────────────── (bottom rule)
 ///   Row H-1: ● Normal · …   (status line)
+///
+/// All output goes through the captured real stdout so that redraws work even when
+/// Console.Out has been redirected (e.g. during streaming suppression).
 /// </summary>
 public sealed class TerminalPanel
 {
     private readonly ReplState _state;
+    private readonly TextWriter _out;
     private int _lastWindowHeight;
     private int _lastWindowWidth;
     private int _savedCursorRow;
@@ -24,6 +30,8 @@ public sealed class TerminalPanel
     public TerminalPanel(ReplState state)
     {
         _state = state;
+        // Capture the real stdout before anything can redirect Console.Out
+        _out = Console.Out;
     }
 
     /// <summary>
@@ -40,18 +48,19 @@ public sealed class TerminalPanel
         var scrollBottom = _lastWindowHeight - 4; // rows 1..H-4 (1-indexed for ANSI)
 
         // Set scroll region to upper portion
-        Console.Write($"\x1b[1;{scrollBottom}r");
+        _out.Write($"\x1b[1;{scrollBottom}r");
 
         IsActive = true;
 
         DrawPanel();
 
         // Move cursor to top-left of scroll region AFTER drawing panel
-        Console.Write("\x1b[1;1H");
+        _out.Write("\x1b[1;1H");
     }
 
     /// <summary>
-    /// Redraw just the panel lines (e.g. after mode change). Saves/restores cursor position.
+    /// Redraw just the panel lines (e.g. after mode change or verbosity toggle).
+    /// Saves/restores cursor position. Works even when Console.Out is redirected.
     /// </summary>
     public void Redraw()
     {
@@ -59,10 +68,10 @@ public sealed class TerminalPanel
             return;
 
         // Save cursor position
-        Console.Write("\x1b[s");
+        _out.Write("\x1b[s");
         DrawPanel();
         // Restore cursor position
-        Console.Write("\x1b[u");
+        _out.Write("\x1b[u");
     }
 
     /// <summary>
@@ -87,7 +96,7 @@ public sealed class TerminalPanel
         Console.SetCursorPosition(0, promptRow);
 
         // Clear the prompt line so RadLine starts fresh
-        Console.Write("\x1b[2K");
+        _out.Write("\x1b[2K");
     }
 
     /// <summary>
@@ -110,13 +119,14 @@ public sealed class TerminalPanel
             return;
 
         // Reset scroll region to full terminal
-        Console.Write("\x1b[r");
+        _out.Write("\x1b[r");
         IsActive = false;
     }
 
     /// <summary>
     /// Draw the 4-line panel at the bottom of the terminal.
-    /// Uses raw ANSI codes to avoid Spectre.Console cursor positioning conflicts.
+    /// Uses raw ANSI codes written to the real stdout to avoid
+    /// Spectre.Console cursor positioning conflicts and Console.Out redirection.
     /// </summary>
     private void DrawPanel()
     {
@@ -125,23 +135,16 @@ public sealed class TerminalPanel
         var rule = new string('─', width);
 
         // Row H-4 (0-indexed: h-4): top rule
-        Console.SetCursorPosition(0, h - 4);
-        Console.Write("\x1b[2K");
-        Console.Write($"\x1b[90m{rule}\x1b[0m");
+        _out.Write($"\x1b[{h - 3};1H\x1b[2K\x1b[90m{rule}\x1b[0m");
 
         // Row H-3 (0-indexed: h-3): prompt line — cleared but not written (RadLine draws here)
-        Console.SetCursorPosition(0, h - 3);
-        Console.Write("\x1b[2K");
+        _out.Write($"\x1b[{h - 2};1H\x1b[2K");
 
         // Row H-2 (0-indexed: h-2): bottom rule
-        Console.SetCursorPosition(0, h - 2);
-        Console.Write("\x1b[2K");
-        Console.Write($"\x1b[90m{rule}\x1b[0m");
+        _out.Write($"\x1b[{h - 1};1H\x1b[2K\x1b[90m{rule}\x1b[0m");
 
         // Row H-1 (0-indexed: h-1): status line
-        Console.SetCursorPosition(0, h - 1);
-        Console.Write("\x1b[2K");
-        Console.Write(BuildStatusLine());
+        _out.Write($"\x1b[{h};1H\x1b[2K{BuildStatusLine()}");
     }
 
     /// <summary>
