@@ -198,7 +198,7 @@ internal sealed class CommandHandler
                 return false;
 
             case SlashCommand.Benchmark:
-                await HandleBenchmarkAsync(ct);
+                await HandleBenchmarkAsync(command.Args, ct);
                 return false;
 
             case SlashCommand.Docs:
@@ -1490,7 +1490,7 @@ internal sealed class CommandHandler
         }
     }
 
-    private async Task HandleBenchmarkAsync(CancellationToken ct)
+    private async Task HandleBenchmarkAsync(string[] args, CancellationToken ct)
     {
         if (RunAgentLoop is null)
         {
@@ -1498,12 +1498,51 @@ internal sealed class CommandHandler
             return;
         }
 
+        var runsPerModel = 3;
+        IReadOnlyList<string>? modelFilter = null; // null = current model only
+
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("count=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = arg[6..];
+                if (!int.TryParse(value, out runsPerModel) || runsPerModel < 1)
+                {
+                    AnsiConsole.MarkupLine("[red]Invalid count — must be a positive integer (e.g. count=5).[/]");
+                    return;
+                }
+            }
+            else if (arg.StartsWith("models=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = arg[7..];
+                if (value.Equals("all", StringComparison.OrdinalIgnoreCase))
+                {
+                    modelFilter = []; // empty list signals "all models"
+                }
+                else
+                {
+                    modelFilter = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (modelFilter.Count == 0)
+                    {
+                        AnsiConsole.MarkupLine("[red]Invalid models — provide comma-separated names or 'all' (e.g. models=all).[/]");
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[red]Unknown argument: {Markup.Escape(arg)}[/]");
+                AnsiConsole.MarkupLine("[grey]Usage: /benchmark [count=N] [models=all|name1,name2][/]");
+                return;
+            }
+        }
+
         var runner = new BenchmarkRunner(_config, _systemPromptBuilder, _logger, RunAgentLoop,
             _toolCallRenderer, StreamingRenderer!, _state);
 
         try
         {
-            await runner.RunAsync(ct);
+            await runner.RunAsync(runsPerModel, modelFilter, ct);
         }
         catch (OperationCanceledException)
         {
@@ -1673,7 +1712,7 @@ internal sealed class CommandHandler
         table.AddRow(Markup.Escape("/fork [name]"), "Fork current session (creates a branch)");
         table.AddRow(Markup.Escape("/review [staged|commit|file]"), "Run code review via sub-agent");
         table.AddRow(Markup.Escape("/docs <library> [query]"), "Fetch library docs via Context7");
-        table.AddRow(Markup.Escape("/benchmark, /bench"), "Benchmark all loaded models with a coding task");
+        table.AddRow(Markup.Escape("/benchmark [count=N] [models=all|a,b]"), "Benchmark models (default: current model, 3 runs)");
         table.AddRow(Markup.Escape("!<command>"), "Run shell command directly");
         table.AddRow(Markup.Escape("/exit, /quit, /q"), "Exit OpenOrca");
 
@@ -1699,7 +1738,7 @@ internal sealed class CommandHandler
         }
 
         AnsiConsole.MarkupLine($"[grey]  Shift+Tab  Cycle input mode (Normal → Plan → Ask → Normal)[/]");
-        AnsiConsole.MarkupLine($"[grey]  Ctrl+O     Toggle thinking output (currently {(_state.ShowThinking ? "[green]visible[/]" : "[yellow]hidden[/]")})[/]");
+        AnsiConsole.MarkupLine($"[grey]  Ctrl+O     Cycle verbosity 0-4 (currently [cyan]{_state.Verbosity}[/])[/]");
         AnsiConsole.MarkupLine($"[grey]  Mode       {(_state.Mode switch { InputMode.Plan => "[cyan]Plan[/]", InputMode.Ask => "[magenta]Ask[/]", _ => "[grey]Normal[/]" })}[/]");
         AnsiConsole.MarkupLine("[grey]  Tip: End a line with \\ to continue input on the next line[/]");
     }
