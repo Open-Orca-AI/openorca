@@ -334,8 +334,9 @@ public class FileSystemToolTests : IDisposable
         Assert.Contains("--- diff ---", result.Content);
 
         var lines = result.Content.Split('\n');
-        Assert.Contains(lines, l => l.TrimEnd().StartsWith("-") && l.Contains("old code"));
-        Assert.Contains(lines, l => l.TrimEnd().StartsWith("+") && l.Contains("new code"));
+        // Format: "  {lineNum} - {text}" for removed, "  {lineNum} + {text}" for added
+        Assert.Contains(lines, l => l.Contains(" - ") && l.Contains("old code"));
+        Assert.Contains(lines, l => l.Contains(" + ") && l.Contains("new code"));
     }
 
     [Fact]
@@ -350,12 +351,13 @@ public class FileSystemToolTests : IDisposable
         var result = await tool.ExecuteAsync(args, CancellationToken.None);
 
         Assert.False(result.IsError);
-        var lines = result.Content.Split('\n')
-            .Where(l => l.Contains('│'))
+        // Filter to lines with digits (diff content lines, not header)
+        var diffLines = result.Content.Split('\n')
+            .Where(l => l.TrimStart().Length > 0 && char.IsDigit(l.TrimStart()[0]))
             .ToArray();
 
-        // Context lines start with spaces (not - or +)
-        var contextLines = lines.Where(l => !l.TrimStart().StartsWith('-') && !l.TrimStart().StartsWith('+')).ToArray();
+        // Context lines have "   " (3 spaces) after the number, not " - " or " + "
+        var contextLines = diffLines.Where(l => !l.Contains(" - ") && !l.Contains(" + ")).ToArray();
         Assert.NotEmpty(contextLines);
         foreach (var ctx in contextLines)
             Assert.StartsWith(" ", ctx);

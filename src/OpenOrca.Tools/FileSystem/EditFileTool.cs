@@ -114,26 +114,27 @@ public sealed class EditFileTool : IOrcaTool
         const int contextCount = 3;
         var contextStart = Math.Max(0, startLine - contextCount);
         var endLine = startLine + oldLines.Length - 1;
+        var shift = newLines.Length - oldLines.Length;
         var contextEnd = Math.Min(allLines.Length - 1, endLine + contextCount);
 
         var sb = new StringBuilder();
         sb.AppendLine("--- diff ---");
 
-        // Context lines before
+        // Context lines before (same line numbers in old and new)
         for (var i = contextStart; i < startLine; i++)
-            sb.AppendLine($"   {i + 1,4} │ {allLines[i]}");
+            sb.AppendLine($"  {i + 1,4}   {allLines[i]}");
 
-        // Removed lines (from old_string)
+        // Removed lines (old file line numbers)
         for (var i = 0; i < oldLines.Length; i++)
-            sb.AppendLine($"-  {startLine + i + 1,4} │ {oldLines[i]}");
+            sb.AppendLine($"  {startLine + i + 1,4} - {oldLines[i]}");
 
-        // Added lines (from new_string)
+        // Added lines (new file line numbers)
         for (var i = 0; i < newLines.Length; i++)
-            sb.AppendLine($"+  {startLine + i + 1,4} │ {newLines[i]}");
+            sb.AppendLine($"  {startLine + i + 1,4} + {newLines[i]}");
 
-        // Context lines after
+        // Context lines after (shifted line numbers from new file)
         for (var i = endLine + 1; i <= contextEnd; i++)
-            sb.AppendLine($"   {i + 1,4} │ {allLines[i]}");
+            sb.AppendLine($"  {i + 1 + shift,4}   {allLines[i]}");
 
         return sb.ToString();
     }

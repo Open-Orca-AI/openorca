@@ -156,7 +156,7 @@ public class ToolCallRendererTests
     {
         var (renderer, state, console) = CreateWithAnsi();
         state.Verbosity = 2; // full output
-        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n   1 │ context\n-  2 │ old line\n+  2 │ new line\n   3 │ context";
+        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n     1   context\n     2 - old line\n     2 + new line\n     3   context";
 
         renderer.RenderToolResult("edit_file", result);
         var output = console.Output;
@@ -170,7 +170,7 @@ public class ToolCallRendererTests
     {
         var (renderer, state, console) = CreateWithAnsi();
         state.Verbosity = 2;
-        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n   1 │ context\n-  2 │ old line\n+  2 │ new line\n   3 │ context";
+        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n     1   context\n     2 - old line\n     2 + new line\n     3   context";
 
         renderer.RenderToolResult("edit_file", result);
         var output = console.Output;
@@ -184,7 +184,7 @@ public class ToolCallRendererTests
     {
         var (renderer, state, console) = CreateWithAnsi();
         state.Verbosity = 2;
-        var result = "--- diff ---\n   1 │ context line\n-  2 │ old\n+  2 │ new";
+        var result = "--- diff ---\n     1   context line\n     2 - old\n     2 + new";
 
         renderer.RenderToolResult("edit_file", result);
         var output = console.Output;

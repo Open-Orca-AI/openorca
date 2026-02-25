@@ -135,10 +135,11 @@ public sealed class ToolCallRenderer
         {
             var line = lines[i];
             var escaped = Markup.Escape(line);
+            var marker = GetDiffLineMarker(line);
 
-            if (line.StartsWith("- ") && line.Contains('│'))
+            if (marker == '-')
                 _console.MarkupLine($"        [#ff9999 on #3d0000]{escaped}[/]");
-            else if (line.StartsWith("+ ") && line.Contains('│'))
+            else if (marker == '+')
                 _console.MarkupLine($"        [#99ff99 on #003d00]{escaped}[/]");
             else
                 _console.MarkupLine($"        [dim]{escaped}[/]");
@@ -149,6 +150,30 @@ public sealed class ToolCallRenderer
             var remaining = lines.Length - maxLines;
             _console.MarkupLine($"        [dim]⋯ {remaining} more line{(remaining == 1 ? "" : "s")} (Ctrl+O to increase verbosity)[/]");
         }
+    }
+
+    /// <summary>
+    /// Detect diff line type from format: "  {lineNum} - {text}" or "  {lineNum} + {text}".
+    /// Returns '-', '+', or '\0' for context/other lines.
+    /// </summary>
+    private static char GetDiffLineMarker(string line)
+    {
+        var trimmed = line.AsSpan().TrimStart();
+        if (trimmed.Length == 0 || !char.IsDigit(trimmed[0]))
+            return '\0';
+
+        var idx = 0;
+        while (idx < trimmed.Length && char.IsDigit(trimmed[idx])) idx++;
+
+        // Expect " - " or " + " after the digits
+        if (idx + 3 <= trimmed.Length && trimmed[idx] == ' ' && trimmed[idx + 2] == ' ')
+        {
+            var marker = trimmed[idx + 1];
+            if (marker is '-' or '+')
+                return marker;
+        }
+
+        return '\0';
     }
 
     public void RenderPermissionPrompt(string toolName, string riskLevel)
