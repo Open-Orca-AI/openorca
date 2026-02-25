@@ -40,6 +40,11 @@ internal sealed class AgentLoopRunner
     /// </summary>
     private bool _maxTokensNegotiated;
 
+    /// <summary>
+    /// Whether a parameter auto-correction has already been applied this session (prevents infinite retry).
+    /// </summary>
+    private bool _parameterCorrected;
+
     public AgentLoopRunner(
         IChatClient chatClient,
         OrcaConfig config,
@@ -709,6 +714,11 @@ internal sealed class AgentLoopRunner
                     mdStream.Finish();
                     _streamingRenderer.Finish();
                     Console.Write("\x1b[0m");
+
+                    var fullMessage = ex.InnerException?.Message ?? ex.Message;
+                    if (TryAutoCorrectParameter(fullMessage))
+                        continue;
+
                     _logger.LogError(ex, "HTTP error communicating with LLM server");
                     AnsiConsole.MarkupLine($"\n[red]LLM server error: {Markup.Escape(ex.Message)}[/]");
                     if (ex.InnerException is not null)
@@ -724,6 +734,10 @@ internal sealed class AgentLoopRunner
                     mdStream.Finish();
                     _streamingRenderer.Finish();
                     Console.Write("\x1b[0m");
+
+                    var fullMessage = ex.InnerException?.Message ?? ex.Message;
+                    if (TryAutoCorrectParameter(fullMessage))
+                        continue;
 
                     _logger.LogError(ex, "Error in agent loop iteration {Iteration}", iteration + 1);
                     AnsiConsole.MarkupLine($"\n[red]Error: {Markup.Escape(ex.Message)}[/]");
@@ -872,6 +886,21 @@ internal sealed class AgentLoopRunner
             _logger.LogDebug(ex, "Error probe failed");
             return null;
         }
+    }
+
+    private bool TryAutoCorrectParameter(string errorMessage)
+    {
+        if (_parameterCorrected) return false;
+
+        var parsed = MaxTokensNegotiator.ParseLimitFromError(errorMessage);
+        if (parsed is null) return false;
+
+        _parameterCorrected = true;
+        _logger.LogInformation("Auto-correcting max tokens: {Old} → {New}",
+            _config.LmStudio.MaxTokens, parsed);
+        _config.LmStudio.MaxTokens = parsed;
+        AnsiConsole.MarkupLine($"[yellow]Auto-corrected max output tokens to {parsed}. Retrying...[/]");
+        return true;
     }
 
     internal static void ShowLogHint()
