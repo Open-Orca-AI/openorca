@@ -69,7 +69,19 @@ public sealed class EditFileTool : IOrcaTool
             var content = await File.ReadAllTextAsync(path, ct);
 
             if (!content.Contains(oldString))
-                return ToolResult.Error($"old_string not found in {path}. Use read_file to see current content.");
+            {
+                // Fallback: local models often double-escape \n in JSON — try unescaping
+                var unescapedOld = StringEscapeHelper.UnescapeLiteralSequences(oldString);
+                if (unescapedOld != oldString && content.Contains(unescapedOld))
+                {
+                    oldString = unescapedOld;
+                    newString = StringEscapeHelper.UnescapeLiteralSequences(newString);
+                }
+                else
+                {
+                    return ToolResult.Error($"old_string not found in {path}. Use read_file to see current content.");
+                }
+            }
 
             if (!replaceAll)
             {

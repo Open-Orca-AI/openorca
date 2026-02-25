@@ -340,6 +340,41 @@ public class FileSystemToolTests : IDisposable
     }
 
     [Fact]
+    public async Task EditFileTool_DoubleEscapedNewlines_FallbackUnescapes()
+    {
+        var filePath = Path.Combine(_tempDir, "escaped_edit.txt");
+        await File.WriteAllTextAsync(filePath, "line1\nline2\nline3");
+
+        var tool = new EditFileTool();
+        // Simulate double-escaped \n: JSON literal "line1\\nline2" → after parse → "line1\nline2" (backslash+n)
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "line1\\nline2", "new_string": "replaced"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("Replaced", result.Content);
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.Equal("replaced\nline3", content);
+    }
+
+    [Fact]
+    public async Task EditFileTool_DoubleEscapedNewlines_NewStringAlsoUnescaped()
+    {
+        var filePath = Path.Combine(_tempDir, "escaped_edit2.txt");
+        await File.WriteAllTextAsync(filePath, "aaa\nbbb\nccc");
+
+        var tool = new EditFileTool();
+        // Both old and new have double-escaped newlines
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "aaa\\nbbb", "new_string": "xxx\\nyyy"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.Equal("xxx\nyyy\nccc", content);
+    }
+
+    [Fact]
     public async Task EditFileTool_DiffOutput_ContextLinesHaveSpacePrefix()
     {
         var filePath = Path.Combine(_tempDir, "diff_ctx.txt");

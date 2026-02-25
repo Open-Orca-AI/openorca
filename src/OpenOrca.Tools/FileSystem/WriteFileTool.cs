@@ -38,6 +38,9 @@ public sealed class WriteFileTool : IOrcaTool
         var content = args.GetProperty("content").GetString()!;
         var append = args.TryGetProperty("append", out var a) && a.GetBooleanLenient();
 
+        // Fix double-escaped newlines from local models (literal \n instead of real newlines)
+        content = StringEscapeHelper.UnescapeLiteralSequences(content);
+
         path = Path.GetFullPath(path);
 
         // Reject empty content or very short content that's just a role tag (model hallucination)
