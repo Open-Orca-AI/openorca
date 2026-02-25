@@ -89,6 +89,45 @@ public sealed class ToolRegistry
 
     public IReadOnlyCollection<string> GetToolNames() => _tools.Keys;
 
+    /// <summary>
+    /// Find the closest matching tool name for an unknown tool request.
+    /// Uses alias mapping and substring matching.
+    /// </summary>
+    public string? FindClosestMatch(string unknownName)
+    {
+        // Common aliases models try to use
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["run_command"] = "bash",
+            ["execute"] = "bash",
+            ["shell"] = "bash",
+            ["search_text"] = "grep",
+            ["find_files"] = "glob",
+            ["ls"] = "list_directory",
+            ["cat"] = "read_file",
+            ["rm"] = "delete_file",
+            ["mv"] = "move_file",
+            ["cp"] = "copy_file",
+            ["touch"] = "write_file",
+            ["search"] = "web_search",
+            ["fetch"] = "http_request",
+        };
+
+        if (aliases.TryGetValue(unknownName, out var aliased) && _tools.ContainsKey(aliased))
+            return aliased;
+
+        // Substring match: find tools whose name contains the query or vice versa
+        var lower = unknownName.ToLowerInvariant();
+        foreach (var name in _tools.Keys)
+        {
+            if (name.Contains(lower, StringComparison.OrdinalIgnoreCase) ||
+                lower.Contains(name.ToLowerInvariant()))
+                return name;
+        }
+
+        return null;
+    }
+
     public IList<AITool> GenerateAITools()
     {
         var tools = new List<AITool>();

@@ -33,6 +33,9 @@ public sealed class InputHandler
                     _savedInput = text;
                 }));
 
+            _editor.KeyBindings.Add(ConsoleKey.O, ConsoleModifiers.Control,
+                () => new CycleVerbosityCommand(state, panel));
+
             // Bind plain Up/Down to history (RadLine defaults to Ctrl+Up/Ctrl+Down)
             _editor.KeyBindings.Add<PreviousHistoryCommand>(ConsoleKey.UpArrow);
             _editor.KeyBindings.Add<NextHistoryCommand>(ConsoleKey.DownArrow);
@@ -199,6 +202,28 @@ internal sealed class CycleModeCommand : LineEditorCommand
         _state.CycleMode();
         _onCycled(context.Buffer.Content);
         context.Submit(SubmitAction.Cancel);
+    }
+}
+
+/// <summary>
+/// Ctrl+O command: cycle verbosity level (0→1→2→3→4→0) and redraw the panel
+/// to show the updated level. Does not cancel the current input.
+/// </summary>
+internal sealed class CycleVerbosityCommand : LineEditorCommand
+{
+    private readonly ReplState _state;
+    private readonly TerminalPanel _panel;
+
+    public CycleVerbosityCommand(ReplState state, TerminalPanel panel)
+    {
+        _state = state;
+        _panel = panel;
+    }
+
+    public override void Execute(LineEditorContext context)
+    {
+        _state.Verbosity = (_state.Verbosity + 1) % 5;
+        _panel.Redraw();
     }
 }
 

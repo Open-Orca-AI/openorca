@@ -26,6 +26,7 @@ internal sealed class ToolCallExecutor
     private readonly ConcurrentDictionary<string, (string Error, int Count)> _recentToolErrors = new();
 
     public Func<string, string, CancellationToken, Task<string>>? ToolExecutor { get; set; }
+    public Func<string, string, Action<string>, CancellationToken, Task<string>>? StreamingToolExecutor { get; set; }
     public IList<AITool>? Tools { get; set; }
 
     /// <summary>
@@ -128,11 +129,13 @@ internal sealed class ToolCallExecutor
         }
 
         // Phase 2 — Execute in parallel (only calls that weren't pre-resolved)
-        var results = new (string Result, bool IsError, TimeSpan Elapsed)[functionCalls.Count];
+        var results = new (string Result, bool IsError, TimeSpan Elapsed, bool Streamed)[functionCalls.Count];
         var semaphore = new SemaphoreSlim(CliConstants.MaxParallelToolCalls);
 
-        // Start progress indicator for tools that need execution
-        var toolsToExecute = callData.Where(d => d.PreResult is null).Select(d => d.ToolName).ToList();
+        // Start progress indicator for non-streaming tools that need execution
+        var toolsToExecute = callData
+            .Where(d => d.PreResult is null && !IsStreamingTool(d.ToolName))
+            .Select(d => d.ToolName).ToList();
         using var progress = RealStdout is not null && toolsToExecute.Count > 0
             ? new ToolProgressIndicator(RealStdout, toolsToExecute)
             : null;
@@ -143,7 +146,7 @@ internal sealed class ToolCallExecutor
             var (toolName, args, call, preResult, preError) = callData[i];
             if (preResult is not null)
             {
-                results[i] = (preResult, preError, TimeSpan.Zero);
+                results[i] = (preResult, preError, TimeSpan.Zero, false);
                 continue;
             }
 
@@ -161,7 +164,7 @@ internal sealed class ToolCallExecutor
         for (int i = 0; i < callData.Length; i++)
         {
             var (toolName, args, call, preResult, _) = callData[i];
-            var (result, isError, elapsed) = results[i];
+            var (result, isError, elapsed, streamed) = results[i];
 
             // Pre-resolved calls already rendered in Phase 1, just commit to conversation
             if (preResult is not null)
@@ -173,7 +176,10 @@ internal sealed class ToolCallExecutor
             }
 
             result = ApplyRetryDetection(toolName, args, result);
-            _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
+
+            // Skip rendering for streaming tools — user already saw output in real-time
+            if (!streamed)
+                _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
 
             var toolResultMessage = new ChatMessage(ChatRole.Tool, "");
             toolResultMessage.Contents.Add(new FunctionResultContent(call.CallId, result));
@@ -241,11 +247,13 @@ internal sealed class ToolCallExecutor
         }
 
         // Phase 2 — Execute in parallel (only calls that weren't pre-resolved)
-        var results = new (string Result, bool IsError, TimeSpan Elapsed)[functionCalls.Count];
+        var results = new (string Result, bool IsError, TimeSpan Elapsed, bool Streamed)[functionCalls.Count];
         var semaphore = new SemaphoreSlim(CliConstants.MaxParallelToolCalls);
 
-        // Start progress indicator for tools that need execution
-        var toolsToExecute = callData.Where(d => d.PreResult is null).Select(d => d.ToolName).ToList();
+        // Start progress indicator for non-streaming tools that need execution
+        var toolsToExecute = callData
+            .Where(d => d.PreResult is null && !IsStreamingTool(d.ToolName))
+            .Select(d => d.ToolName).ToList();
         using var progress = RealStdout is not null && toolsToExecute.Count > 0
             ? new ToolProgressIndicator(RealStdout, toolsToExecute)
             : null;
@@ -256,7 +264,7 @@ internal sealed class ToolCallExecutor
             var (toolName, args, preResult, preError) = callData[i];
             if (preResult is not null)
             {
-                results[i] = (preResult, preError, TimeSpan.Zero);
+                results[i] = (preResult, preError, TimeSpan.Zero, false);
                 continue;
             }
 
@@ -276,7 +284,7 @@ internal sealed class ToolCallExecutor
         for (int i = 0; i < callData.Length; i++)
         {
             var (toolName, args, preResult, _) = callData[i];
-            var (result, isError, elapsed) = results[i];
+            var (result, isError, elapsed, streamed) = results[i];
 
             // Pre-resolved calls (plan mode) already rendered in Phase 1
             if (preResult is not null)
@@ -286,7 +294,10 @@ internal sealed class ToolCallExecutor
             }
 
             result = ApplyRetryDetection(toolName, args, result);
-            _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
+
+            // Skip rendering for streaming tools — user already saw output in real-time
+            if (!streamed)
+                _toolCallRenderer.RenderToolResult(toolName, result, isError, elapsed);
             resultParts.Add($"[Tool result for {toolName}]\n{result}");
         }
 
@@ -298,6 +309,15 @@ internal sealed class ToolCallExecutor
     }
 
     /// <summary>
+    /// Check if a tool supports streaming output (implements IStreamingOrcaTool).
+    /// </summary>
+    public bool IsStreamingTool(string toolName)
+    {
+        var tool = _toolRegistry.Resolve(toolName);
+        return tool is IStreamingOrcaTool && StreamingToolExecutor is not null;
+    }
+
+    /// <summary>
     /// Execute a single tool with semaphore throttling and a global timeout safety net.
     /// Writes result to the shared results array.
     /// </summary>
@@ -305,7 +325,7 @@ internal sealed class ToolCallExecutor
         int index,
         string toolName,
         string args,
-        (string Result, bool IsError, TimeSpan Elapsed)[] results,
+        (string Result, bool IsError, TimeSpan Elapsed, bool Streamed)[] results,
         SemaphoreSlim semaphore,
         ToolProgressIndicator? progress,
         CancellationToken ct)
@@ -314,7 +334,50 @@ internal sealed class ToolCallExecutor
         var sw = Stopwatch.StartNew();
         try
         {
-            if (ToolExecutor is not null)
+            var isStreaming = IsStreamingTool(toolName);
+
+            if (isStreaming && StreamingToolExecutor is not null)
+            {
+                // Streaming path — stop progress indicator first so output lines don't interleave
+                progress?.MarkCompleted(toolName);
+
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(CliConstants.ToolExecutionTimeoutSeconds));
+
+                try
+                {
+                    var result = await StreamingToolExecutor(toolName, args, line =>
+                    {
+                        if (RealStdout is not null && _state.ShowToolCalls)
+                        {
+                            RealStdout.Write("\r\x1b[K");
+                            RealStdout.WriteLine($"  \x1b[2m\u2502 {line}\x1b[0m");
+                            RealStdout.Flush();
+                        }
+                    }, timeoutCts.Token);
+                    sw.Stop();
+                    _logger.LogDebug("Streaming tool {Name} returned {Len} chars in {Elapsed:F1}s", toolName, result.Length, sw.Elapsed.TotalSeconds);
+                    results[index] = (result, false, sw.Elapsed, true);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    sw.Stop();
+                    _logger.LogWarning("Streaming tool {Name} timed out after {Timeout}s",
+                        toolName, CliConstants.ToolExecutionTimeoutSeconds);
+                    results[index] = ($"Error: Tool '{toolName}' timed out after {CliConstants.ToolExecutionTimeoutSeconds} seconds.", true, sw.Elapsed, true);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    results[index] = ($"Error: {ex.Message}", true, sw.Elapsed, true);
+                    _logger.LogWarning(ex, "Streaming tool {Name} threw exception", toolName);
+                }
+            }
+            else if (ToolExecutor is not null)
             {
                 // Create a linked CTS: fires on user cancellation OR global tool timeout
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -325,7 +388,7 @@ internal sealed class ToolCallExecutor
                     var result = await ToolExecutor(toolName, args, timeoutCts.Token);
                     sw.Stop();
                     _logger.LogDebug("Tool {Name} returned {Len} chars in {Elapsed:F1}s", toolName, result.Length, sw.Elapsed.TotalSeconds);
-                    results[index] = (result, false, sw.Elapsed);
+                    results[index] = (result, false, sw.Elapsed, false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
@@ -334,7 +397,7 @@ internal sealed class ToolCallExecutor
                     _logger.LogWarning("Tool {Name} timed out after {Timeout}s",
                         toolName, CliConstants.ToolExecutionTimeoutSeconds);
                     results[index] = ($"Error: Tool '{toolName}' timed out after {CliConstants.ToolExecutionTimeoutSeconds} seconds. " +
-                        "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.", true, sw.Elapsed);
+                        "If this command runs indefinitely (server, watcher, REPL), use start_background_process instead.", true, sw.Elapsed, false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -344,20 +407,21 @@ internal sealed class ToolCallExecutor
                 catch (Exception ex)
                 {
                     sw.Stop();
-                    results[index] = ($"Error: {ex.Message}", true, sw.Elapsed);
+                    results[index] = ($"Error: {ex.Message}", true, sw.Elapsed, false);
                     _logger.LogWarning(ex, "Tool {Name} threw exception", toolName);
                 }
             }
             else
             {
                 sw.Stop();
-                results[index] = ("Tool execution not available.", true, sw.Elapsed);
+                results[index] = ("Tool execution not available.", true, sw.Elapsed, false);
                 _logger.LogWarning("Tool executor not set — cannot execute {Name}", toolName);
             }
         }
         finally
         {
-            progress?.MarkCompleted(toolName);
+            if (!IsStreamingTool(toolName))
+                progress?.MarkCompleted(toolName);
             semaphore.Release();
         }
     }

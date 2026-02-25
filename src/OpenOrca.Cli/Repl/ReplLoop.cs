@@ -99,10 +99,14 @@ public sealed class ReplLoop
         _commandHandler.Context7 = _context7Helper;
     }
 
-    public void SetTools(IList<AITool> tools, Func<string, string, CancellationToken, Task<string>> executor)
+    public void SetTools(
+        IList<AITool> tools,
+        Func<string, string, CancellationToken, Task<string>> executor,
+        Func<string, string, Action<string>, CancellationToken, Task<string>>? streamingExecutor = null)
     {
         _toolCallExecutor.Tools = tools;
         _toolCallExecutor.ToolExecutor = executor;
+        _toolCallExecutor.StreamingToolExecutor = streamingExecutor;
         _commandHandler.Tools = tools;
     }
 

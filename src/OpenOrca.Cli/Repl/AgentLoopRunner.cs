@@ -89,7 +89,8 @@ internal sealed class AgentLoopRunner
         _toolCallExecutor.ClearRecentErrors();
 
         // Initialize thinking visibility from config on first run
-        _state.ShowThinking = _config.Thinking.DefaultVisible;
+        if (_config.Thinking.DefaultVisible && _state.Verbosity < 3)
+            _state.Verbosity = 3;
 
         // Auto-compact check
         if (_config.Context.AutoCompactEnabled)
@@ -202,36 +203,42 @@ internal sealed class AgentLoopRunner
                         var key = Console.ReadKey(intercept: true);
                         if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.O)
                         {
-                            _state.ShowThinking = !_state.ShowThinking;
+                            var wasThinkingVisible = _state.ShowThinking;
+                            // Cycle through all 5 levels: 0→1→2→3→4→0
+                            _state.Verbosity = (_state.Verbosity + 1) % 5;
                             thinkingVisible = _state.ShowThinking;
-                            if (!firstToken)
+                            // Only change display when thinking visibility actually flips
+                            if (thinkingVisible != wasThinkingVisible)
                             {
-                                if (thinkingVisible)
+                                if (!firstToken)
                                 {
-                                    mdStream.Clear(); // clear markdown output if active
-                                    thinking.Stop();
-                                    RestoreConsole();
-                                    Console.Write("\x1b[36m");
-                                    // If we're in the thinking phase, flush accumulated thinking text
-                                    if (!thinkFilter.InResponsePhase && thinkFilter.AccumulatedThinking.Length > 0)
+                                    if (thinkingVisible)
                                     {
-                                        Console.Write(thinkFilter.AccumulatedThinking);
+                                        mdStream.Clear(); // clear markdown output if active
+                                        thinking.Stop();
+                                        RestoreConsole();
+                                        Console.Write("\x1b[36m");
+                                        // If we're in the thinking phase, flush accumulated thinking text
+                                        if (!thinkFilter.InResponsePhase && thinkFilter.AccumulatedThinking.Length > 0)
+                                        {
+                                            Console.Write(thinkFilter.AccumulatedThinking);
+                                        }
+                                        Console.Write(string.Join("", textParts));
                                     }
-                                    Console.Write(string.Join("", textParts));
+                                    else if (!thinkFilter.InResponsePhase)
+                                    {
+                                        // Toggled to hidden during thinking — redirect
+                                        _streamingRenderer.Finish();
+                                        Console.Write("\x1b[0m\r\x1b[K");
+                                        RedirectConsole();
+                                    }
+                                    // If toggled to hidden during response phase, ignore — response stays visible
                                 }
-                                else if (!thinkFilter.InResponsePhase)
+                                else
                                 {
-                                    // Toggled to hidden during thinking — redirect
-                                    _streamingRenderer.Finish();
-                                    Console.Write("\x1b[0m\r\x1b[K");
-                                    RedirectConsole();
+                                    if (thinkingVisible) RestoreConsole();
+                                    else RedirectConsole();
                                 }
-                                // If toggled to hidden during response phase, ignore — response stays visible
-                            }
-                            else
-                            {
-                                if (thinkingVisible) RestoreConsole();
-                                else RedirectConsole();
                             }
                         }
                     }

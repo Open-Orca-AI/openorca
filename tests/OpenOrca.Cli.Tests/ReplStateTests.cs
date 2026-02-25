@@ -28,13 +28,19 @@ public class ReplStateTests
     }
 
     [Fact]
-    public void ShowThinking_CanBeToggled()
+    public void Verbosity_CanBeSetAndDerivedPropertiesWork()
     {
         var state = new ReplState();
-        state.ShowThinking = true;
+        state.Verbosity = 4;
         Assert.True(state.ShowThinking);
-        state.ShowThinking = false;
+        Assert.True(state.ShowFullThinking);
+        Assert.True(state.ShowFullToolOutput);
+        state.Verbosity = 0;
         Assert.False(state.ShowThinking);
+        Assert.True(state.ShowPrintOnly);
+        state.Verbosity = 1;
+        Assert.True(state.ShowToolCalls);
+        Assert.False(state.ShowFullToolOutput);
     }
 
     [Fact]

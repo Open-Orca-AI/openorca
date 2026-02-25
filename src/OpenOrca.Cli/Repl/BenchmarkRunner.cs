@@ -12,7 +12,7 @@ internal sealed class BenchmarkRunner
 {
     private const int PythonTimeoutSeconds = 30;
     private const int ModelTimeoutSeconds = 90;
-    private const int RunsPerModel = 3;
+    private const int DefaultRunsPerModel = 3;
 
     private static readonly int[] ExpectedPrimes =
         [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
@@ -50,25 +50,75 @@ internal sealed class BenchmarkRunner
         _state = state;
     }
 
-    public async Task RunAsync(CancellationToken ct)
+    public async Task RunAsync(int runsPerModel, IReadOnlyList<string>? modelFilter, CancellationToken ct)
     {
-        AnsiConsole.MarkupLine($"[bold cyan]Starting model benchmark ({RunsPerModel} runs per model)...[/]");
+        AnsiConsole.MarkupLine($"[bold cyan]Starting model benchmark ({runsPerModel} run(s) per model)...[/]");
         AnsiConsole.WriteLine();
 
-        // Discover models
-        ModelDiscovery.InvalidateCache();
-        var discovery = new ModelDiscovery(_config,
-            _logger as ILogger<ModelDiscovery>
-            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ModelDiscovery>.Instance);
-        var models = await discovery.GetAvailableModelsAsync(ct);
+        List<string> models;
 
-        if (models.Count == 0)
+        if (modelFilter is null)
         {
-            AnsiConsole.MarkupLine("[red]No models found on the server. Is LM Studio running with models loaded?[/]");
-            return;
+            // Benchmark current model only
+            var current = _config.LmStudio.Model;
+            if (string.IsNullOrWhiteSpace(current))
+            {
+                AnsiConsole.MarkupLine("[red]No model configured. Set a model with /model or use models=all.[/]");
+                return;
+            }
+
+            models = [current];
+            AnsiConsole.MarkupLine($"[grey]Benchmarking current model: {Markup.Escape(current)}[/]");
+        }
+        else
+        {
+            // Discover and filter
+            ModelDiscovery.InvalidateCache();
+            var discovery = new ModelDiscovery(_config,
+                _logger as ILogger<ModelDiscovery>
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ModelDiscovery>.Instance);
+            var available = await discovery.GetAvailableModelsAsync(ct);
+
+            if (available.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No models found on the server. Is LM Studio running with models loaded?[/]");
+                return;
+            }
+
+            if (modelFilter.Count == 0)
+            {
+                // models=all
+                models = available;
+            }
+            else
+            {
+                // Match requested models against available ones (case-insensitive)
+                models = [];
+                foreach (var requested in modelFilter)
+                {
+                    var match = available.FirstOrDefault(m =>
+                        m.Equals(requested, StringComparison.OrdinalIgnoreCase));
+                    if (match is not null)
+                    {
+                        models.Add(match);
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]Model not found: {Markup.Escape(requested)} — skipping[/]");
+                    }
+                }
+
+                if (models.Count == 0)
+                {
+                    AnsiConsole.MarkupLine("[red]None of the requested models are available.[/]");
+                    AnsiConsole.MarkupLine($"[grey]Available: {Markup.Escape(string.Join(", ", available))}[/]");
+                    return;
+                }
+            }
+
+            AnsiConsole.MarkupLine($"[grey]Benchmarking {models.Count} model(s): {Markup.Escape(string.Join(", ", models))}[/]");
         }
 
-        AnsiConsole.MarkupLine($"[grey]Found {models.Count} model(s): {Markup.Escape(string.Join(", ", models))}[/]");
         AnsiConsole.WriteLine();
 
         var originalModel = _config.LmStudio.Model;
@@ -83,10 +133,10 @@ internal sealed class BenchmarkRunner
 
                 var modelResult = new BenchmarkResult { ModelName = model };
 
-                for (var run = 1; run <= RunsPerModel; run++)
+                for (var run = 1; run <= runsPerModel; run++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    AnsiConsole.Write(new Rule($"[bold yellow]{Markup.Escape(model)} — Run {run}/{RunsPerModel}[/]").LeftJustified());
+                    AnsiConsole.Write(new Rule($"[bold yellow]{Markup.Escape(model)} — Run {run}/{runsPerModel}[/]").LeftJustified());
                     var runResult = await BenchmarkSingleRunAsync(model, run, ct);
                     modelResult.Runs.Add(runResult);
                 }
@@ -111,7 +161,7 @@ internal sealed class BenchmarkRunner
         var tempDir = Path.Combine(Path.GetTempPath(), $"orca-benchmark-{sanitized}-run{runNumber}-{timestamp}");
         Directory.CreateDirectory(tempDir);
 
-        var result = new BenchmarkRunResult { TempFolder = tempDir };
+        var result = new BenchmarkRunResult();
         var originalCwd = Directory.GetCurrentDirectory();
 
         // Use a dedicated CTS so we can signal cancellation to the agent loop,
@@ -143,6 +193,18 @@ internal sealed class BenchmarkRunner
         // Always restore CWD (the core method restores in its finally, but guard
         // against the timeout path where it may still be in the temp dir).
         Directory.SetCurrentDirectory(originalCwd);
+
+        // Clean up temp folder
+        try
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+        catch
+        {
+            // Best effort — file locks or permissions may prevent cleanup
+        }
+
         return result;
     }
 
@@ -401,18 +463,5 @@ internal sealed class BenchmarkRunner
         }
 
         AnsiConsole.Write(table);
-
-        // List temp folders
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[grey]Temp folders (for inspection):[/]");
-        foreach (var model in results)
-        {
-            for (var i = 0; i < model.Runs.Count; i++)
-            {
-                var r = model.Runs[i];
-                if (r.TempFolder is not null)
-                    AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(model.ModelName)} #{i + 1}:[/] {Markup.Escape(r.TempFolder)}");
-            }
-        }
     }
 }

@@ -32,6 +32,17 @@ public sealed class GetProcessOutputTool : IOrcaTool
         var processId = args.GetProperty("process_id").GetString()!;
         var tailLines = args.TryGetProperty("tail_lines", out var tl) ? tl.GetInt32() : 50;
 
+        // Resolve "last"/"latest" to the most recently started process
+        if (processId.Equals("last", StringComparison.OrdinalIgnoreCase) ||
+            processId.Equals("latest", StringComparison.OrdinalIgnoreCase))
+        {
+            var latest = BackgroundProcessManager.ListAll()
+                .OrderByDescending(p => p.StartTimeUtc).FirstOrDefault();
+            if (latest is null)
+                return Task.FromResult(ToolResult.Error("No background processes found."));
+            processId = latest.Id;
+        }
+
         var managed = BackgroundProcessManager.Get(processId);
         if (managed is null)
             return Task.FromResult(ToolResult.Error($"No process found with ID \"{processId}\". Use start_background_process first."));

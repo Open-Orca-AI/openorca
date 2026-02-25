@@ -45,12 +45,28 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
         _writer?.Dispose();
         _currentDate = today;
-        var path = Path.Combine(_logDirectory, $"openorca-{today}.log");
-        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
-        _writer = new StreamWriter(stream) { AutoFlush = false };
 
-        _writer.WriteLine($"--- OpenOrca log opened at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ---");
-        _writer.Flush();
+        // Try the base filename first, then increment until we find one we can open
+        for (var i = 0; i < 100; i++)
+        {
+            var suffix = i == 0 ? "" : $".{i}";
+            var path = Path.Combine(_logDirectory, $"openorca-{today}{suffix}.log");
+            try
+            {
+                var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                _writer = new StreamWriter(stream) { AutoFlush = false };
+                _writer.WriteLine($"--- OpenOrca log opened at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ---");
+                _writer.Flush();
+                return;
+            }
+            catch (IOException)
+            {
+                // File locked by another process — try next suffix
+            }
+        }
+
+        // All attempts failed — run without file logging
+        _writer = null;
     }
 
     private static string LevelTag(LogLevel level) => level switch

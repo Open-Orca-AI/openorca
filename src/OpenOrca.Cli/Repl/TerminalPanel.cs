@@ -156,7 +156,17 @@ public sealed class TerminalPanel
             _ => ("\x1b[34m●\x1b[0m", "\x1b[34mNormal\x1b[0m"),               // blue
         };
 
-        return $"  {dot} {modeName} \x1b[90m· Shift+Tab: switch mode · /help: commands\x1b[0m";
+        var verbosityLabel = _state.Verbosity switch
+        {
+            0 => "quiet",
+            1 => "normal",
+            2 => "full output",
+            3 => "thinking",
+            4 => "full thinking",
+            _ => $"level {_state.Verbosity}"
+        };
+
+        return $"  {dot} {modeName} \x1b[90m· Shift+Tab: mode · Ctrl+O: verbosity [\x1b[0m\x1b[33m{_state.Verbosity}\x1b[0m\x1b[90m/{verbosityLabel}] · /help\x1b[0m";
     }
 
     private static bool IsTerminalSupported()

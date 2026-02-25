@@ -43,7 +43,7 @@ public class ConcurrencyTests
             {
                 for (var j = 0; j < 500; j++)
                 {
-                    state.ShowThinking = !state.ShowThinking;
+                    state.Verbosity = (state.Verbosity + 1) % 5;
                     state.PlanMode = !state.PlanMode;
                 }
             }));

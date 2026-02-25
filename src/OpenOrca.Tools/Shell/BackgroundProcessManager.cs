@@ -98,6 +98,7 @@ public sealed class ManagedProcess : IDisposable
     private readonly List<string> _outputLines = new();
     private readonly Lock _lock = new();
     private readonly Process _process;
+    private int _totalAppended;
 
     public string Id { get; }
     public string Command { get; }
@@ -121,6 +122,7 @@ public sealed class ManagedProcess : IDisposable
         lock (_lock)
         {
             _outputLines.Add(line);
+            _totalAppended++;
             if (_outputLines.Count > MaxLines)
                 _outputLines.RemoveAt(0);
         }
@@ -135,9 +137,45 @@ public sealed class ManagedProcess : IDisposable
         }
     }
 
+    /// <summary>
+    /// Returns only lines added since the cursor position, and the updated cursor.
+    /// Handles ring buffer eviction correctly.
+    /// </summary>
+    public (List<string> Lines, int NewCursor) GetNewLines(int cursor)
+    {
+        lock (_lock)
+        {
+            if (cursor >= _totalAppended)
+                return (new List<string>(), cursor);
+
+            var newCount = _totalAppended - cursor;
+            var available = Math.Min(newCount, _outputLines.Count);
+            var start = _outputLines.Count - available;
+            return (_outputLines.GetRange(start, available), _totalAppended);
+        }
+    }
+
+    /// <summary>
+    /// Wait for the process to exit, with a timeout. Returns true if exited, false if timed out.
+    /// </summary>
+    public async Task<bool> WaitForExitAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        try
+        {
+            await _process.WaitForExitAsync(cts.Token);
+            return true;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
     public int TotalLinesCaptured
     {
-        get { lock (_lock) { return _outputLines.Count; } }
+        get { lock (_lock) { return _totalAppended; } }
     }
 
     internal void Kill()

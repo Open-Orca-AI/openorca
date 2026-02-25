@@ -6,7 +6,6 @@ internal sealed class BenchmarkRunResult
     public long PythonExecTimeMs { get; set; }
     public bool? OutputCorrect { get; set; }
     public string? Notes { get; set; }
-    public string? TempFolder { get; set; }
 }
 
 internal sealed class BenchmarkResult
