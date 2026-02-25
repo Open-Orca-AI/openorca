@@ -102,6 +102,10 @@ public sealed class ToolCallRenderer
                 RenderPreviewLines(bodyLines, maxLines, expanded);
             }
         }
+        else if (toolName is "edit_file" or "multi_edit")
+        {
+            RenderEditDiffLines(lines, maxLines, expanded);
+        }
         else
         {
             // Success: show preview lines in dim
@@ -115,6 +119,30 @@ public sealed class ToolCallRenderer
 
         for (var i = 0; i < linesToShow; i++)
             _console.MarkupLine($"        [dim]{Markup.Escape(lines[i])}[/]");
+
+        if (!expanded && lines.Length > maxLines)
+        {
+            var remaining = lines.Length - maxLines;
+            _console.MarkupLine($"        [dim]⋯ {remaining} more line{(remaining == 1 ? "" : "s")} (Ctrl+O to increase verbosity)[/]");
+        }
+    }
+
+    private void RenderEditDiffLines(string[] lines, int maxLines, bool expanded)
+    {
+        var linesToShow = expanded ? lines.Length : Math.Min(lines.Length, maxLines);
+
+        for (var i = 0; i < linesToShow; i++)
+        {
+            var line = lines[i];
+            var escaped = Markup.Escape(line);
+
+            if (line.StartsWith("- ") && line.Contains('│'))
+                _console.MarkupLine($"        [#ff9999 on #3d0000]{escaped}[/]");
+            else if (line.StartsWith("+ ") && line.Contains('│'))
+                _console.MarkupLine($"        [#99ff99 on #003d00]{escaped}[/]");
+            else
+                _console.MarkupLine($"        [dim]{escaped}[/]");
+        }
 
         if (!expanded && lines.Length > maxLines)
         {

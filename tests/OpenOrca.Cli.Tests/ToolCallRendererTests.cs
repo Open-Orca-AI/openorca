@@ -141,4 +141,55 @@ public class ToolCallRendererTests
 
         Assert.Contains("1 more line ", output); // trailing space ensures "line" not "lines"
     }
+
+    private static (ToolCallRenderer renderer, ReplState state, TestConsole console) CreateWithAnsi()
+    {
+        var state = new ReplState();
+        var console = new TestConsole();
+        console.EmitAnsiSequences = true;
+        var renderer = new ToolCallRenderer(state, console);
+        return (renderer, state, console);
+    }
+
+    [Fact]
+    public void RenderToolResult_EditFile_RemovedLines_HaveRedBackground()
+    {
+        var (renderer, state, console) = CreateWithAnsi();
+        state.Verbosity = 2; // full output
+        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n   1 │ context\n-  2 │ old line\n+  2 │ new line\n   3 │ context";
+
+        renderer.RenderToolResult("edit_file", result);
+        var output = console.Output;
+
+        // ANSI 24-bit background for #3d0000 (RGB 61,0,0): ESC[48;2;61;0;0m
+        Assert.Contains("48;2;61;0;0", output);
+    }
+
+    [Fact]
+    public void RenderToolResult_EditFile_AddedLines_HaveGreenBackground()
+    {
+        var (renderer, state, console) = CreateWithAnsi();
+        state.Verbosity = 2;
+        var result = "Replaced 1 occurrence(s) in file.cs\n\n--- diff ---\n   1 │ context\n-  2 │ old line\n+  2 │ new line\n   3 │ context";
+
+        renderer.RenderToolResult("edit_file", result);
+        var output = console.Output;
+
+        // ANSI 24-bit background for #003d00 (RGB 0,61,0): ESC[48;2;0;61;0m
+        Assert.Contains("48;2;0;61;0", output);
+    }
+
+    [Fact]
+    public void RenderToolResult_EditFile_ContextLines_AreDim()
+    {
+        var (renderer, state, console) = CreateWithAnsi();
+        state.Verbosity = 2;
+        var result = "--- diff ---\n   1 │ context line\n-  2 │ old\n+  2 │ new";
+
+        renderer.RenderToolResult("edit_file", result);
+        var output = console.Output;
+
+        // ANSI dim: ESC[2m
+        Assert.Contains("\x1b[2m", output);
+    }
 }

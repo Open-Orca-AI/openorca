@@ -89,10 +89,10 @@ public sealed class EditFileTool : IOrcaTool
                 ? CountOccurrences(content, oldString)
                 : 1;
 
-            // Show snippet around the change (5 lines before/after)
-            var snippet = GetChangeSnippet(newContent, newString);
+            // Show diff around the first change
+            var diff = GetEditDiff(content, oldString, newString);
 
-            return ToolResult.Success($"Replaced {changeCount} occurrence(s) in {path}\n\n{snippet}");
+            return ToolResult.Success($"Replaced {changeCount} occurrence(s) in {path}\n\n{diff}");
         }
         catch (Exception ex)
         {
@@ -100,24 +100,41 @@ public sealed class EditFileTool : IOrcaTool
         }
     }
 
-    private static string GetChangeSnippet(string content, string newString)
+    internal static string GetEditDiff(string originalContent, string oldString, string newString)
     {
-        var pos = content.IndexOf(newString, StringComparison.Ordinal);
+        var pos = originalContent.IndexOf(oldString, StringComparison.Ordinal);
         if (pos < 0) return "";
 
-        var lines = content.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-        // Count newlines before pos to find the target line
-        var targetLine = content[..pos].Split('\n').Length - 1;
+        var allLines = originalContent.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        var startLine = originalContent[..pos].Split('\n').Length - 1;
 
-        var start = Math.Max(0, targetLine - 5);
-        var end = Math.Min(lines.Length - 1, targetLine + 5);
+        var oldLines = oldString.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+        var newLines = newString.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
+
+        const int contextCount = 3;
+        var contextStart = Math.Max(0, startLine - contextCount);
+        var endLine = startLine + oldLines.Length - 1;
+        var contextEnd = Math.Min(allLines.Length - 1, endLine + contextCount);
 
         var sb = new StringBuilder();
-        sb.AppendLine("--- snippet ---");
-        for (var i = start; i <= end; i++)
-        {
-            sb.AppendLine($"  {i + 1}\t{lines[i]}");
-        }
+        sb.AppendLine("--- diff ---");
+
+        // Context lines before
+        for (var i = contextStart; i < startLine; i++)
+            sb.AppendLine($"   {i + 1,4} │ {allLines[i]}");
+
+        // Removed lines (from old_string)
+        for (var i = 0; i < oldLines.Length; i++)
+            sb.AppendLine($"-  {startLine + i + 1,4} │ {oldLines[i]}");
+
+        // Added lines (from new_string)
+        for (var i = 0; i < newLines.Length; i++)
+            sb.AppendLine($"+  {startLine + i + 1,4} │ {newLines[i]}");
+
+        // Context lines after
+        for (var i = endLine + 1; i <= contextEnd; i++)
+            sb.AppendLine($"   {i + 1,4} │ {allLines[i]}");
+
         return sb.ToString();
     }
 

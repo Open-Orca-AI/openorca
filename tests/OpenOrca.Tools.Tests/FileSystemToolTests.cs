@@ -1,6 +1,7 @@
 using OpenOrca.Tools.FileSystem;
 using Xunit;
 using static OpenOrca.Tools.Tests.TestHelpers;
+using System.Linq;
 
 namespace OpenOrca.Tools.Tests;
 
@@ -316,5 +317,47 @@ public class FileSystemToolTests : IDisposable
         Assert.False(result.IsError);
         Assert.Contains("nested.txt", result.Content);
         Assert.Contains("top.txt", result.Content);
+    }
+
+    [Fact]
+    public async Task EditFileTool_DiffOutput_ContainsRemovedAndAddedLines()
+    {
+        var filePath = Path.Combine(_tempDir, "diff_test.txt");
+        await File.WriteAllTextAsync(filePath, "line1\nline2\nold code\nline4\nline5");
+
+        var tool = new EditFileTool();
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "old code", "new_string": "new code"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        Assert.Contains("--- diff ---", result.Content);
+
+        var lines = result.Content.Split('\n');
+        Assert.Contains(lines, l => l.TrimEnd().StartsWith("-") && l.Contains("old code"));
+        Assert.Contains(lines, l => l.TrimEnd().StartsWith("+") && l.Contains("new code"));
+    }
+
+    [Fact]
+    public async Task EditFileTool_DiffOutput_ContextLinesHaveSpacePrefix()
+    {
+        var filePath = Path.Combine(_tempDir, "diff_ctx.txt");
+        await File.WriteAllTextAsync(filePath, "before1\nbefore2\ntarget\nafter1\nafter2");
+
+        var tool = new EditFileTool();
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "target", "new_string": "replaced"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        var lines = result.Content.Split('\n')
+            .Where(l => l.Contains('│'))
+            .ToArray();
+
+        // Context lines start with spaces (not - or +)
+        var contextLines = lines.Where(l => !l.TrimStart().StartsWith('-') && !l.TrimStart().StartsWith('+')).ToArray();
+        Assert.NotEmpty(contextLines);
+        foreach (var ctx in contextLines)
+            Assert.StartsWith(" ", ctx);
     }
 }
