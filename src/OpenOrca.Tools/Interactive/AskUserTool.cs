@@ -38,6 +38,17 @@ public sealed class AskUserTool : IOrcaTool
         var question = args.GetProperty("question").GetString()!;
         var optionsElement = args.GetProperty("options");
 
+        // Local models sometimes serialize the array as a JSON string — parse it
+        if (optionsElement.ValueKind == JsonValueKind.String)
+        {
+            var raw = optionsElement.GetString()!;
+            try { optionsElement = JsonDocument.Parse(raw).RootElement; }
+            catch { return ToolResult.Error("options must be a JSON array of strings."); }
+        }
+
+        if (optionsElement.ValueKind != JsonValueKind.Array)
+            return ToolResult.Error("options must be a JSON array of strings.");
+
         var options = new List<string>();
         foreach (var item in optionsElement.EnumerateArray())
         {
