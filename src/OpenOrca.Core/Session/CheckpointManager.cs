@@ -17,6 +17,7 @@ public sealed class CheckpointEntry
 public sealed class CheckpointManager
 {
     private readonly string _baseDir;
+    private readonly SemaphoreSlim _manifestLock = new(1, 1);
 
     public CheckpointManager()
     {
@@ -47,34 +48,43 @@ public sealed class CheckpointManager
         if (!File.Exists(filePath))
             return;
 
-        var sessionDir = GetSessionDir(sessionId);
-        Directory.CreateDirectory(sessionDir);
-
-        // Load existing manifest
-        var manifest = await LoadManifestAsync(sessionId);
-
-        // Skip if already checkpointed this file in this session
-        if (manifest.Any(e => string.Equals(e.FilePath, filePath, StringComparison.OrdinalIgnoreCase)))
-            return;
-
-        // Create backup
-        var timestamp = DateTime.UtcNow;
-        var pathHash = ComputeHash(filePath);
-        var backupFileName = $"{timestamp:yyyyMMdd_HHmmss}_{pathHash}.bak";
-        var backupPath = Path.Combine(sessionDir, backupFileName);
-
-        await CopyFileAsync(filePath, backupPath);
-
-        var fileInfo = new FileInfo(filePath);
-        manifest.Add(new CheckpointEntry
+        // Serialize manifest access — parallel tool calls race on the same manifest.json
+        await _manifestLock.WaitAsync();
+        try
         {
-            FilePath = filePath,
-            BackupFile = backupFileName,
-            Timestamp = timestamp,
-            SizeBytes = fileInfo.Length
-        });
+            var sessionDir = GetSessionDir(sessionId);
+            Directory.CreateDirectory(sessionDir);
 
-        await SaveManifestAsync(sessionId, manifest);
+            // Load existing manifest
+            var manifest = await LoadManifestAsync(sessionId);
+
+            // Skip if already checkpointed this file in this session
+            if (manifest.Any(e => string.Equals(e.FilePath, filePath, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            // Create backup
+            var timestamp = DateTime.UtcNow;
+            var pathHash = ComputeHash(filePath);
+            var backupFileName = $"{timestamp:yyyyMMdd_HHmmss}_{pathHash}.bak";
+            var backupPath = Path.Combine(sessionDir, backupFileName);
+
+            await CopyFileWithRetryAsync(filePath, backupPath);
+
+            var fileInfo = new FileInfo(filePath);
+            manifest.Add(new CheckpointEntry
+            {
+                FilePath = filePath,
+                BackupFile = backupFileName,
+                Timestamp = timestamp,
+                SizeBytes = fileInfo.Length
+            });
+
+            await SaveManifestAsync(sessionId, manifest);
+        }
+        finally
+        {
+            _manifestLock.Release();
+        }
     }
 
     /// <summary>
@@ -129,7 +139,7 @@ public sealed class CheckpointManager
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        await CopyFileAsync(backupPath, filePath);
+        await CopyFileWithRetryAsync(backupPath, filePath);
         return true;
     }
 
@@ -167,12 +177,23 @@ public sealed class CheckpointManager
         await File.WriteAllTextAsync(path, json);
     }
 
-    private static async Task CopyFileAsync(string source, string destination)
+    private static async Task CopyFileWithRetryAsync(string source, string destination, int maxRetries = 3)
     {
         const int bufferSize = 81920;
-        await using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
-        await using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
-        await sourceStream.CopyToAsync(destStream);
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize, useAsync: true);
+                await using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+                await sourceStream.CopyToAsync(destStream);
+                return;
+            }
+            catch (IOException) when (attempt < maxRetries)
+            {
+                await Task.Delay(50 * (1 << attempt));
+            }
+        }
     }
 
     private static string ComputeHash(string input)
