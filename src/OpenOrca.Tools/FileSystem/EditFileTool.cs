@@ -88,7 +88,10 @@ public sealed class EditFileTool : IOrcaTool
                     }
                     else
                     {
-                        return ToolResult.Error($"old_string not found in {path}. Use read_file to see current content.");
+                        var preview = content.Length <= 10_000
+                            ? content
+                            : content[..10_000] + $"\n... ({content.Length - 10_000} chars truncated)";
+                        return ToolResult.Error($"old_string not found in {path}. Current file content:\n\n{preview}");
                     }
                 }
             }
