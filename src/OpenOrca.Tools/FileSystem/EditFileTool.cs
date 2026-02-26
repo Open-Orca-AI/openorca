@@ -79,7 +79,17 @@ public sealed class EditFileTool : IOrcaTool
                 }
                 else
                 {
-                    return ToolResult.Error($"old_string not found in {path}. Use read_file to see current content.");
+                    // Fallback: local models often strip leading whitespace — try normalized match
+                    var wsMatch = TryWhitespaceNormalizedMatch(content, oldString);
+                    if (wsMatch != null)
+                    {
+                        newString = AdjustIndentation(newString, wsMatch, oldString);
+                        oldString = wsMatch;
+                    }
+                    else
+                    {
+                        return ToolResult.Error($"old_string not found in {path}. Use read_file to see current content.");
+                    }
                 }
             }
 
@@ -167,5 +177,86 @@ public sealed class EditFileTool : IOrcaTool
             index += value.Length;
         }
         return count;
+    }
+
+    /// <summary>
+    /// Tries to find old_string in content by comparing with leading whitespace stripped from each line.
+    /// Returns the actual matched substring from content (with original indentation), or null.
+    /// </summary>
+    internal static string? TryWhitespaceNormalizedMatch(string content, string oldString)
+    {
+        var oldLines = oldString.Split('\n');
+        var contentLines = content.Split('\n');
+
+        // Strip trailing \r from each line for consistent comparison
+        var oldTrimmed = oldLines.Select(l => l.TrimStart().TrimEnd('\r')).ToArray();
+
+        // Skip if old_string is empty or single whitespace-only line (too ambiguous)
+        if (oldTrimmed.Length == 0 || (oldTrimmed.Length == 1 && oldTrimmed[0].Length == 0))
+            return null;
+
+        string? firstMatch = null;
+        var matchCount = 0;
+
+        for (var i = 0; i <= contentLines.Length - oldTrimmed.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < oldTrimmed.Length; j++)
+            {
+                if (contentLines[i + j].TrimStart().TrimEnd('\r') != oldTrimmed[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match)
+            {
+                matchCount++;
+                if (matchCount == 1)
+                    firstMatch = string.Join('\n', contentLines.Skip(i).Take(oldTrimmed.Length));
+                if (matchCount > 1)
+                    return null; // Ambiguous — multiple matches, bail out
+            }
+        }
+
+        // Only return if we found exactly one match AND it differs from the original
+        return firstMatch != null && firstMatch != oldString ? firstMatch : null;
+    }
+
+    /// <summary>
+    /// Adjusts indentation of new_string to match the indentation found in the actual file match.
+    /// Detects the indentation delta between what the model sent (old_string) and what the file has,
+    /// then prepends that delta to each line of new_string.
+    /// </summary>
+    internal static string AdjustIndentation(string newString, string matchedOldString, string originalOldString)
+    {
+        var matchedFirstLine = matchedOldString.Split('\n')[0];
+        var oldFirstLine = originalOldString.Split('\n')[0];
+
+        var matchedIndent = GetLeadingWhitespace(matchedFirstLine);
+        var oldIndent = GetLeadingWhitespace(oldFirstLine);
+
+        // If the model already had enough indentation, no adjustment needed
+        if (oldIndent.Length >= matchedIndent.Length)
+            return newString;
+
+        // The extra indentation the file has that the model omitted
+        var delta = matchedIndent[oldIndent.Length..];
+
+        var lines = newString.Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(lines[i]))
+                lines[i] = delta + lines[i];
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static string GetLeadingWhitespace(string line)
+    {
+        var trimmed = line.TrimStart();
+        return line[..(line.Length - trimmed.Length)];
     }
 }

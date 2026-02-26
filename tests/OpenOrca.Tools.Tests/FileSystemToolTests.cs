@@ -375,6 +375,63 @@ public class FileSystemToolTests : IDisposable
     }
 
     [Fact]
+    public async Task EditFileTool_WhitespaceNormalized_MatchesIndentedContent()
+    {
+        // File has indented code, model sends old_string without indentation
+        var filePath = Path.Combine(_tempDir, "ws_edit.js");
+        await File.WriteAllTextAsync(filePath,
+            "class Foo {\n    update() {\n        this.platforms.create(x + i * 32, pos.y, 'brick');\n    }\n}");
+
+        var tool = new EditFileTool();
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "this.platforms.create(x + i * 32, pos.y, 'brick');", "new_string": "this.blocks.create(x + i * 32, pos.y, 'brick');"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        var content = await File.ReadAllTextAsync(filePath);
+        // new_string should get the same 8-space indentation as the original
+        Assert.Contains("        this.blocks.create(x + i * 32, pos.y, 'brick');", content);
+    }
+
+    [Fact]
+    public async Task EditFileTool_WhitespaceNormalized_MultiLinePreservesRelativeIndent()
+    {
+        var filePath = Path.Combine(_tempDir, "ws_multi.js");
+        await File.WriteAllTextAsync(filePath,
+            "function test() {\n    if (true) {\n        doStuff();\n    }\n}");
+
+        var tool = new EditFileTool();
+        // Model sends multi-line old_string without the 4-space base indent
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "if (true) {\n    doStuff();\n}", "new_string": "if (false) {\n    doOther();\n    doMore();\n}"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        Assert.False(result.IsError);
+        var content = await File.ReadAllTextAsync(filePath);
+        // Each line should get 4 extra spaces prepended
+        Assert.Contains("    if (false) {", content);
+        Assert.Contains("        doOther();", content);
+        Assert.Contains("        doMore();", content);
+        Assert.Contains("    }", content);
+    }
+
+    [Fact]
+    public async Task EditFileTool_WhitespaceNormalized_AmbiguousMultipleMatches_ReturnsError()
+    {
+        var filePath = Path.Combine(_tempDir, "ws_ambig.txt");
+        await File.WriteAllTextAsync(filePath,
+            "    doStuff();\n    doStuff();\n");
+
+        var tool = new EditFileTool();
+        var args = MakeArgs($$"""{"path": "{{EscapePath(filePath)}}", "old_string": "doStuff();", "new_string": "doOther();"}""");
+
+        var result = await tool.ExecuteAsync(args, CancellationToken.None);
+
+        // Should fail — ambiguous match (appears twice)
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
     public async Task EditFileTool_DiffOutput_ContextLinesHaveSpacePrefix()
     {
         var filePath = Path.Combine(_tempDir, "diff_ctx.txt");
