@@ -129,27 +129,71 @@ public sealed class ToolCallRenderer
 
     private void RenderEditDiffLines(string[] lines, int maxLines, bool expanded)
     {
-        var linesToShow = expanded ? lines.Length : Math.Min(lines.Length, maxLines);
-
-        for (var i = 0; i < linesToShow; i++)
+        if (expanded)
         {
-            var line = lines[i];
-            var escaped = Markup.Escape(line);
-            var marker = GetDiffLineMarker(line);
+            for (var i = 0; i < lines.Length; i++)
+                RenderDiffLine(lines[i]);
+            return;
+        }
 
-            if (marker == '-')
-                _console.MarkupLine($"        [#ff9999 on #3d0000]{escaped}[/]");
-            else if (marker == '+')
-                _console.MarkupLine($"        [#99ff99 on #003d00]{escaped}[/]");
+        // Identify lines that must always be shown:
+        // change lines (+ / -) and up to 2 context lines before/after each change
+        var pinned = new bool[lines.Length];
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (GetDiffLineMarker(lines[i]) is not ('-' or '+'))
+                continue;
+
+            pinned[i] = true;
+            for (var j = Math.Max(0, i - 2); j < i; j++)
+                pinned[j] = true;
+            for (var j = i + 1; j <= Math.Min(lines.Length - 1, i + 2); j++)
+                pinned[j] = true;
+        }
+
+        // Render: pinned lines always shown, others count toward the budget.
+        // When lines are skipped between shown sections, insert a blank separator.
+        var contextBudget = maxLines;
+        var truncated = 0;
+        var skippedSinceLastShown = false;
+        var anyShown = false;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (pinned[i] || contextBudget > 0)
+            {
+                if (skippedSinceLastShown && anyShown)
+                    _console.MarkupLine("");
+
+                RenderDiffLine(lines[i]);
+                anyShown = true;
+                skippedSinceLastShown = false;
+
+                if (!pinned[i])
+                    contextBudget--;
+            }
             else
-                _console.MarkupLine($"        [dim]{escaped}[/]");
+            {
+                skippedSinceLastShown = true;
+                truncated++;
+            }
         }
 
-        if (!expanded && lines.Length > maxLines)
-        {
-            var remaining = lines.Length - maxLines;
-            _console.MarkupLine($"        [dim]⋯ {remaining} more line{(remaining == 1 ? "" : "s")} (Ctrl+O to increase verbosity)[/]");
-        }
+        if (truncated > 0)
+            _console.MarkupLine($"        [dim]⋯ {truncated} more line{(truncated == 1 ? "" : "s")} (Ctrl+O to increase verbosity)[/]");
+    }
+
+    private void RenderDiffLine(string line)
+    {
+        var escaped = Markup.Escape(line);
+        var marker = GetDiffLineMarker(line);
+
+        if (marker == '-')
+            _console.MarkupLine($"        [#ff9999 on #3d0000]{escaped}[/]");
+        else if (marker == '+')
+            _console.MarkupLine($"        [#99ff99 on #003d00]{escaped}[/]");
+        else
+            _console.MarkupLine($"        [dim]{escaped}[/]");
     }
 
     /// <summary>
