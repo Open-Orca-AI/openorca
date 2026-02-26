@@ -379,6 +379,11 @@ internal sealed class ToolCallExecutor
             }
             else if (ToolExecutor is not null)
             {
+                // Interactive tools need the terminal — stop the progress animation so it
+                // doesn't overwrite the prompt, and skip the execution timeout.
+                if (toolName == "ask_user")
+                    progress?.Stop();
+
                 // Create a linked CTS: fires on user cancellation OR global tool timeout.
                 // Interactive tools (ask_user) wait on human input and must never timeout.
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
