@@ -379,9 +379,11 @@ internal sealed class ToolCallExecutor
             }
             else if (ToolExecutor is not null)
             {
-                // Create a linked CTS: fires on user cancellation OR global tool timeout
+                // Create a linked CTS: fires on user cancellation OR global tool timeout.
+                // Interactive tools (ask_user) wait on human input and must never timeout.
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(TimeSpan.FromSeconds(CliConstants.ToolExecutionTimeoutSeconds));
+                if (toolName != "ask_user")
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(CliConstants.ToolExecutionTimeoutSeconds));
 
                 try
                 {
