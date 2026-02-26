@@ -547,25 +547,45 @@ if (spawnTool is not null)
 var askUserTool = toolRegistry.Resolve("ask_user") as AskUserTool;
 if (askUserTool is not null)
 {
-    askUserTool.UserPrompter = (question, options, ct) =>
+    askUserTool.UserPrompter = async (question, options, ct) =>
     {
         AnsiConsole.MarkupLine($"[yellow]{Markup.Escape(question)}[/]");
 
         var choices = new List<string>(options) { "Other (type custom response)" };
 
-        var selected = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("Select an option:")
-                .PageSize(12)
-                .AddChoices(choices));
+        // Run the blocking Spectre prompt on a thread-pool thread so Ctrl+C
+        // (which cancels the generation CTS) can interrupt it via WaitAsync.
+        string selected;
+        try
+        {
+            selected = await Task.Run(() => AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Select an option:")
+                    .PageSize(12)
+                    .AddChoices(choices))).WaitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Inject a synthetic Enter key to unblock the orphan Console.ReadKey()
+            ConsoleInputHelper.SendEnterKey();
+            throw;
+        }
 
         if (selected == "Other (type custom response)")
         {
-            selected = AnsiConsole.Prompt(
-                new TextPrompt<string>("[blue]Your response:[/]"));
+            try
+            {
+                selected = await Task.Run(() => AnsiConsole.Prompt(
+                    new TextPrompt<string>("[blue]Your response:[/]"))).WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                ConsoleInputHelper.SendEnterKey();
+                throw;
+            }
         }
 
-        return Task.FromResult(selected);
+        return selected;
     };
 }
 
