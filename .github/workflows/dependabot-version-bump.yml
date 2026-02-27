@@ -1,0 +1,47 @@
+name: Dependabot Version Bump
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          CURRENT=$(grep -oP '(?<=<Version>)\d+\.\d+\.\d+' Directory.Build.props)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+
+          sed -i "s/<Version>$CURRENT</<Version>$NEW_VERSION</" Directory.Build.props
+          sed -i "s/version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" src/OpenOrca.Core/Mcp/McpClient.cs
+
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped $CURRENT → $NEW_VERSION"
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Directory.Build.props src/OpenOrca.Core/Mcp/McpClient.cs
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push && git push --tags
