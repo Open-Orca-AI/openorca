@@ -6,8 +6,8 @@ const config = {
   tagline: 'A local-first AI coding assistant that runs entirely on your machine',
   favicon: 'img/favicon.png',
 
-  url: 'https://open-orca-ai.github.io',
-  baseUrl: '/openorca/',
+  url: 'https://openorca.uk',
+  baseUrl: '/',
 
   organizationName: 'open-orca-ai',
   projectName: 'openorca',
