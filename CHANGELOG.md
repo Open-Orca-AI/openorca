@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-02-27
+
+### Changed
+- **Version sync fix** — aligned HttpHelper User-Agent version with assembly version (was stuck at 0.6.0)
+- **Documentation updates** — updated tool count to 39 across README, website, and wiki; backfilled CHANGELOG for versions 0.7.0–0.12.0
+
+## [0.12.0] - 2026-02-27
+
+### Added
+- **Docusaurus website** — full documentation site deployed to GitHub Pages at [openorca.uk](https://openorca.uk) with ocean theme
+- **Dependabot** — automated dependency updates with auto-merge for patch versions
+- **Custom domain** — configured site for openorca.uk
+
+### Changed
+- **CI: Dependabot auto-merge** — uses metadata check instead of PR approval
+- **Dependabot version bumping** — creates PRs instead of pushing directly to main
+- **Updated dependencies** — Markdig 0.45→1.0.0, actions/setup-dotnet 4→5, actions/cache 4→5, actions/upload-artifact 4→7, actions/download-artifact 4→8, Andrew-Chen-Wang/github-wiki-action 4→5
+
+## [0.11.0] - 2026-02-26
+
+### Added
+- **Claude-style colored diff rendering** — edit_file tool shows diffs with line numbers before markers
+
+### Fixed
+- **edit_file: whitespace-normalized fallback** — matches old_string even when whitespace differs slightly
+- **edit_file: double-escaped newlines** — handles `\\n` literals from local models
+- **edit_file: error includes file content** — old_string-not-found errors now show the file for context
+- **Diff rendering** — addition lines and surrounding context always visible
+- **Checkpoint file lock race** — prevents deadlock when parallel tool calls snapshot concurrently
+- **ask_user: stringified JSON arrays** — handles options passed as JSON string instead of array
+- **ask_user: progress indicator overlap** — fixed Ctrl+C not cancelling and spinner overlap
+- **ask_user: execution timeout exemption** — interactive prompts no longer time out
+- **spawn_agent: parameter alias coverage** — expanded aliases and added smart inference
+
+## [0.10.0] - 2026-02-25
+
+### Added
+- **Next-prompt ghost text suggestions** — context-aware prompt suggestions appear as grey ghost text, accept with Tab
+
+## [0.9.0] - 2026-02-25
+
+### Added
+- **Lenient JSON type coercion** — tool parameters automatically coerce between strings, numbers, booleans, and arrays to handle local model quirks
+
+## [0.8.1] - 2026-02-24
+
+### Fixed
+- **Panel redraw during streaming** — resolved flickering when Spectre panels update mid-stream
+- **Interactive `/model`** — model selection now works interactively in the REPL
+
+## [0.8.0] - 2026-02-24
+
+### Added
+- **4 new tools** (35 → 39 total):
+  - `print` — always-visible user messages regardless of verbosity level
+  - `create_directory` — create directories with automatic parent creation
+  - `rename_file` — rename or move files with overwrite option
+  - `list_processes` — show all background processes and their status
+- **Streaming tool output** — `IStreamingOrcaTool` interface for real-time tool output during execution
+- **Verbosity system** — 5-level verbosity (Ctrl+O cycles 0→4): quiet, tool calls, full output, thinking preview, full thinking
+- **`/benchmark` enhancements** — `count=N` and `models=all|name1,name2` arguments; verbosity level shown in info bar
+
+### Changed
+- **BashTool refactored** — background execution support with enhanced lifecycle tracking
+- **ToolCallExecutor** — streaming-aware execution pipeline
+- **ThinkTagFilter** — MaxThinkingLines for thinking preview at verbosity level 3
+
+### Fixed
+- **FileLoggerProvider** — handles locked log files with suffix fallback
+
+## [0.7.1] - 2026-02-24
+
+### Fixed
+- **Auto-correct LLM parameter errors** — automatically retries with corrected parameters when the model makes schema errors during streaming
+- **Multiple JSON tool calls** — handles multiple tool call JSON objects in a single `<tool_call>` block
+
+## [0.7.0] - 2026-02-23
+
+### Added
+- **Context7 integration** — automatic library documentation lookup for up-to-date API references
+
+### Changed
+- **Codebase cleanup** — bug fixes, directory rename, test consolidation
+- **Docs sync** — all documentation, wiki, and CI workflows updated to reflect .NET 10 / v0.6.0
+
 ## [0.6.0] - 2026-02-23
 
 ### Changed

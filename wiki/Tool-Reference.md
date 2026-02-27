@@ -1,6 +1,6 @@
 # Tool Reference
 
-OpenOrca includes 35 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
+OpenOrca includes 39 built-in tools organized by category. Each tool has a **risk level** that determines whether it requires user approval.
 
 ## Permission Levels
 
@@ -14,7 +14,7 @@ You can customize permissions in [Configuration](Configuration). Specific tools 
 
 ---
 
-## File System (12 tools)
+## File System (14 tools)
 
 ### `read_file`
 **Risk:** ReadOnly
@@ -102,6 +102,17 @@ Move or rename a file.
 | `source` | string | Yes | Source path |
 | `destination` | string | Yes | Destination path |
 
+### `rename_file`
+**Risk:** Moderate
+
+Rename a file or directory. Creates parent directories for the destination automatically.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source` | string | Yes | The current file or directory path |
+| `destination` | string | Yes | The new file or directory path |
+| `overwrite` | boolean | No | Overwrite the destination if it exists. Defaults to false |
+
 ### `mkdir`
 **Risk:** Moderate
 
@@ -110,6 +121,15 @@ Create a directory (and parent directories).
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Directory path |
+
+### `create_directory`
+**Risk:** Moderate
+
+Create a directory and any missing parent directories. Succeeds silently if it already exists.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | The path of the directory to create |
 
 ### `cd`
 **Risk:** Moderate
@@ -158,7 +178,7 @@ List directory contents.
 
 ---
 
-## Shell (4 tools)
+## Shell (5 tools)
 
 ### `bash`
 **Risk:** Dangerous
@@ -198,6 +218,13 @@ Stop a running background process.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `pid` | string | Yes | Process ID |
+
+### `list_processes`
+**Risk:** ReadOnly
+
+List all background processes and their status (running/exited), command, uptime, and process ID.
+
+*No parameters.*
 
 ---
 
@@ -352,7 +379,7 @@ Create, extract, or list contents of zip archives.
 
 ---
 
-## Utility & Interactive (5 tools)
+## Utility & Interactive (6 tools)
 
 ### `think`
 **Risk:** ReadOnly
@@ -362,6 +389,15 @@ A scratchpad for the model to do step-by-step reasoning without taking action. O
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `thought` | string | Yes | Reasoning content |
+
+### `print`
+**Risk:** ReadOnly
+
+Display a message to the user. The message content is always visible regardless of verbosity setting.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `message` | string | Yes | The message to display to the user |
 
 ### `task_list`
 **Risk:** ReadOnly
