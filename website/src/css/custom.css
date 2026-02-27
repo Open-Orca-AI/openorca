@@ -52,56 +52,6 @@
   border-top: 1px solid var(--ocean-glass-border);
 }
 
-/* --- Bubble animation (reusable) --- */
-@keyframes oceanRise {
-  0% {
-    transform: translateY(0) translateX(0) scale(1);
-    opacity: 0;
-  }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% {
-    transform: translateY(-110vh) translateX(30px) scale(0.6);
-    opacity: 0;
-  }
-}
-
-@keyframes oceanFloat {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-12px); }
-}
-
-@keyframes oceanWave1 {
-  0%   { transform: translateX(0) translateY(0); }
-  100% { transform: translateX(-20px) translateY(-5px); }
-}
-
-@keyframes oceanWave2 {
-  0%   { transform: translateX(0) translateY(0); }
-  100% { transform: translateX(25px) translateY(-8px); }
-}
-
-@keyframes oceanWave3 {
-  0%   { transform: translateX(0) translateY(0); }
-  100% { transform: translateX(-15px) translateY(-3px); }
-}
-
-@keyframes oceanAmbient {
-  0% { opacity: 0.6; }
-  100% { opacity: 1; }
-}
-
-@keyframes oceanCardAppear {
-  0% {
-    opacity: 0;
-    transform: translateY(30px) scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
   * {
