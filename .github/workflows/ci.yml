@@ -39,7 +39,7 @@ jobs:
           -o publish
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openorca-linux-x64
           path: publish/
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/**/coverage.cobertura.xml
@@ -148,7 +148,7 @@ jobs:
           rm demo/demo-raw.gif
 
       - name: Upload GIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demo-gif
           path: demo/demo.gif
