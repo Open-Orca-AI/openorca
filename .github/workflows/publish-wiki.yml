@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Andrew-Chen-Wang/github-wiki-action@v4
+      - uses: Andrew-Chen-Wang/github-wiki-action@v5
         with:
           path: wiki/
           commit-message: "docs: sync wiki from main repo"
