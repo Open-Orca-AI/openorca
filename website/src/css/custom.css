@@ -19,4 +19,93 @@
   --ifm-color-primary-lighter: #51ddf2;
   --ifm-color-primary-lightest: #7ae6f6;
   --docusaurus-highlighted-code-line-bg: rgba(34, 211, 238, 0.1);
+
+  /* Ocean theme tokens */
+  --ocean-bg-deep: #0a0e27;
+  --ocean-bg-mid: #0c1426;
+  --ocean-bg-teal: #091b2a;
+  --ocean-cyan: #22d3ee;
+  --ocean-cyan-dark: #0e7490;
+  --ocean-cyan-glow: rgba(34, 211, 238, 0.35);
+  --ocean-glass-bg: rgba(255, 255, 255, 0.05);
+  --ocean-glass-border: rgba(255, 255, 255, 0.1);
+  --ocean-text-muted: #94a3b8;
+
+  /* Override Docusaurus dark theme backgrounds */
+  --ifm-background-color: var(--ocean-bg-deep);
+  --ifm-background-surface-color: var(--ocean-bg-mid);
+  --ifm-navbar-background-color: rgba(10, 14, 39, 0.85);
+  --ifm-footer-background-color: rgba(9, 27, 42, 0.9);
+  --ifm-card-background-color: var(--ocean-glass-bg);
+}
+
+/* --- Dark mode navbar glassmorphism --- */
+[data-theme='dark'] .navbar {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--ocean-glass-border);
+}
+
+/* --- Dark mode footer --- */
+[data-theme='dark'] .footer--dark {
+  background: linear-gradient(180deg, var(--ocean-bg-teal) 0%, var(--ocean-bg-deep) 100%);
+  border-top: 1px solid var(--ocean-glass-border);
+}
+
+/* --- Bubble animation (reusable) --- */
+@keyframes oceanRise {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% {
+    transform: translateY(-110vh) translateX(30px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+@keyframes oceanFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+
+@keyframes oceanWave1 {
+  0%   { transform: translateX(0) translateY(0); }
+  100% { transform: translateX(-20px) translateY(-5px); }
+}
+
+@keyframes oceanWave2 {
+  0%   { transform: translateX(0) translateY(0); }
+  100% { transform: translateX(25px) translateY(-8px); }
+}
+
+@keyframes oceanWave3 {
+  0%   { transform: translateX(0) translateY(0); }
+  100% { transform: translateX(-15px) translateY(-3px); }
+}
+
+@keyframes oceanAmbient {
+  0% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+@keyframes oceanCardAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* --- Reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
 }
