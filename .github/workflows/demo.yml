@@ -50,7 +50,7 @@ jobs:
           rm demo/demo-raw.gif
 
       - name: Upload GIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demo-gif
           path: demo/demo.gif
