@@ -28,3 +28,9 @@ demo/demo.gif
 
 # User config (not project config)
 desiredTools.md
+
+# Website
+website/node_modules/
+website/build/
+website/.docusaurus/
+website/docs/
