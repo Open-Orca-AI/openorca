@@ -14,7 +14,7 @@ public static class HttpHelper
             Timeout = TimeSpan.FromSeconds(30)
         };
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("OpenOrca", "0.6.0")); // Keep in sync with Directory.Build.props <Version>
+            new ProductInfoHeaderValue("OpenOrca", "0.12.1")); // Keep in sync with Directory.Build.props <Version>
         client.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("text/html"));
         client.DefaultRequestHeaders.Accept.Add(

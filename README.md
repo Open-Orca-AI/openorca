@@ -12,14 +12,14 @@
 
 ![OpenOrca Demo](demo/demo.gif)
 
-**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 35 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
+**OpenOrca** is an autonomous AI coding agent that runs in your terminal. It connects to local LLM servers (LM Studio, Ollama, or any OpenAI-compatible API) and uses 39 built-in tools to read, write, and execute code — not just describe what to do, but actually do it.
 
 Think of it as a local, private, open-source alternative to cloud-based AI coding assistants.
 
 ## Features
 
 - **Autonomous agent loop** — the LLM plans, acts, observes results, and iterates up to 25 turns per request
-- **35 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, network diagnostics, archiving, and more
+- **39 built-in tools** — file I/O, shell execution, git operations, web search, GitHub integration, network diagnostics, archiving, and more
 - **Works with any local model** — Mistral, Llama, DeepSeek, Qwen, or any model served via OpenAI-compatible API
 - **Native + text-based tool calling** — auto-detects whether your model supports OpenAI function calling and falls back to text-based `<tool_call>` tags
 - **Streaming with live thinking indicator** — see tokens arrive in real-time, or collapse thinking with Ctrl+O
@@ -216,7 +216,7 @@ OpenOrca.sln
 │   │   ├── Orchestration/    # AgentOrchestrator, AgentTypeRegistry, CustomAgentLoader
 │   │   ├── Permissions/      # PermissionManager, PermissionPattern
 │   │   └── Session/          # SessionManager, CheckpointManager
-│   └── OpenOrca.Tools         # 35 tool implementations
+│   └── OpenOrca.Tools         # 39 tool implementations
 │       ├── FileSystem/       # read_file, write_file, edit_file, glob, grep, etc.
 │       ├── Shell/            # bash, background processes
 │       ├── Git/              # git_status, git_commit, git_push, etc.
@@ -237,7 +237,7 @@ OpenOrca.sln
 
 ## Tools
 
-### File System (12 tools)
+### File System (14 tools)
 
 | Tool | Risk | Description |
 |------|------|-------------|
@@ -248,13 +248,15 @@ OpenOrca.sln
 | `delete_file` | Moderate | Delete files or directories |
 | `copy_file` | Moderate | Copy files or directories |
 | `move_file` | Moderate | Move or rename files |
+| `rename_file` | Moderate | Rename or move files with overwrite option |
 | `mkdir` | Moderate | Create directories |
+| `create_directory` | Moderate | Create directories with parent creation |
 | `cd` | Moderate | Change working directory |
 | `glob` | ReadOnly | Find files by pattern |
 | `grep` | ReadOnly | Search file contents with regex |
 | `list_directory` | ReadOnly | List directory contents |
 
-### Shell (4 tools)
+### Shell (5 tools)
 
 | Tool | Risk | Description |
 |------|------|-------------|
@@ -262,6 +264,7 @@ OpenOrca.sln
 | `start_background_process` | Dangerous | Start long-running processes |
 | `get_process_output` | ReadOnly | Read background process output |
 | `stop_process` | Moderate | Stop background processes |
+| `list_processes` | ReadOnly | List all background processes and status |
 
 ### Git (9 tools)
 
@@ -292,11 +295,12 @@ OpenOrca.sln
 | `network_diagnostics` | ReadOnly | Ping, DNS lookup, or HTTP connectivity check |
 | `archive` | Moderate | Create, extract, or list zip archives |
 
-### Utility & Interactive (5 tools)
+### Utility & Interactive (6 tools)
 
 | Tool | Risk | Description |
 |------|------|-------------|
 | `think` | ReadOnly | Step-by-step reasoning |
+| `print` | ReadOnly | Always-visible user messages regardless of verbosity |
 | `task_list` | ReadOnly | Track progress on tasks |
 | `env` | ReadOnly | Inspect environment variables |
 | `ask_user` | ReadOnly | Ask user a question |
